@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Раскладка DXF для плазмореза</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+<div id="topbar">
+  <h1>Раскладка DXF</h1>
+  <button id="btnNest" class="primary">▶ Разложить</button>
+  <button id="btnOpenAutofit">🎯 Подбор заготовки</button>
+  <button id="btnExport">Экспорт DXF (всё)</button>
+  <button id="btnExportSplit">Экспорт DXF (по листам)</button>
+  <button id="btnPrintReport">🖨 Печать отчёта</button>
+  <button id="btnPrintLayout">🗺 Печать карты</button>
+  <button id="btnSaveHtml">🖼 Отчёт JPG</button>
+  <button id="btnSaveJpgSheets">🖼 Карта JPG</button>
+  <button id="btnOpenArray">🔲 Массив</button>
+  <button id="btnOpenReport">ℹ Информация</button>
+  <button id="btnPrintLabels">🏷 Этикетки</button>
+  <div id="fixBar">
+    <button id="btnSelectFrame" title="Выделить детали рамкой для групповых действий и фиксации">🔲 Область</button>
+    <button id="btnFixToggle" title="Зафиксировать / снять фиксацию (детали или группы)">📌 Фиксация</button>
+    <button id="btnUnfixAll" title="Снять фиксацию со всех деталей">🔓 Отменить фиксацию</button>
+    <button id="btnDuplicateSelected" title="Дублировать выделенные детали (Ctrl+D)">⧉ Дублировать</button>
+    <button id="btnNestRemnant" title="Переразложить остальные вокруг зафиксированных">▶ На остатке</button>
+    <span id="fixCount" class="fix-count">📌 Зафиксировано: 0</span>
+    <div id="status"></div>
+    <div class="history-group">
+      <button id="btnUndo" title="Отменить (Ctrl+Z)" disabled>↶ Отменить</button>
+      <button id="btnRedo" title="Вернуть (Ctrl+Y)" disabled>↷ Вернуть</button>
+    </div>
+    <div class="tools-group">
+      <button id="btnCut" type="button" title="Резать лист по прямым (клик → клик). Shift — орто, Ctrl — без привязки.">✂ Резать лист</button>
+      <button id="btnCutRemoveLast" type="button" title="Удалить последний рез" disabled>↶</button>
+      <button id="btnCutClear" type="button" title="Удалить все резы" disabled>🗑</button>
+      <span id="cutInfo" class="cut-info"></span>
+      <button id="btnMeasure" type="button" title="Измерить расстояние">📏 Линейка</button>
+      <button id="btnMeasureClear" type="button" title="Очистить измерения">🗑</button>
+    </div>
+  </div>
+</div>
+<div id="content">
+<aside id="side">
+<div class="group stock" id="stockGroup">
+<h3>
+  <span class="icon"></span>
+  <span class="stock-title">Заготовка</span>
+  <span class="title-sub">(Лист)</span>
+  <span class="stock-mini-info" id="stockMiniInfo"></span>
+  <button type="button" id="btnToggleStock" class="stock-toggle" title="Свернуть заготовку">▾</button>
+</h3>
+<div class="profile-row">
+<label>Профиль:</label>
+<select id="profileSelect"></select>
+<button type="button" id="btnNewProfile" title="Новый профиль">+</button>
+<button type="button" id="btnSaveProfile" title="Сохранить">💾</button>
+<button type="button" id="btnRenameProfile" title="Переименовать">✏</button>
+<button type="button" class="danger" id="btnDeleteProfile" title="Удалить">🗑</button>
+</div>
+<div class="row"><label>X (ширина), мм</label><input id="inW" type="number" value="3000" step="1" min="1"></div>
+<div class="row"><label>Y (высота), мм</label><input id="inH" type="number" value="1500" step="1" min="1"></div>
+<div class="row" style="margin-top:6px">
+  <button type="button" id="btnLoadStockDxf" style="flex:1" title="Загрузить контур заготовки из DXF">📂 Заготовка из DXF</button>
+  <button type="button" class="danger" id="btnClearStockDxf" title="Сбросить контур" style="display:none">✕</button>
+</div>
+<div class="hint" id="stockDxfInfo" style="display:none;color:#2a6a30"></div>
+<input type="file" id="stockDxfInput" accept=".dxf" hidden>
+<div class="row"><label>Толщина, мм</label><input id="inThick" type="number" value="6" step="0.5" min="0.1"></div>
+<div class="row"><label>Отступ от края, мм
+<button type="button" class="help-btn" data-help="Технологический отступ деталей от кромки листа">?</button>
+</label><input id="inEdge" type="number" value="5" step="1" min="0"></div>
+<div class="row"><label>Ширина реза, мм (Kerf)
+<button type="button" class="help-btn" data-help="Ширина реза плазмы">?</button>
+</label><input id="inKerf" type="number" value="5" step="0.1" min="0"></div>
+<div class="row"><label>Зазор между деталями, мм
+<button type="button" class="help-btn" data-help="Расстояние между контурами деталей">?</button>
+</label><input id="inGap" type="number" value="2" step="0.5" min="0"></div>
+<div class="row"><label>Привязка, мм
+<button type="button" class="help-btn" data-help="Радиус притягивания. Shift — отключить.">?</button>
+</label><input id="inSnapThreshold" type="number" value="10" step="1" min="0" max="50"></div>
+<div class="row"><label>Шаг сетки (Alt), мм
+<button type="button" class="help-btn" data-help="При перетаскивании с зажатым Alt — деталь движется ровно шагами по N мм. Галочка — показывать сетку на холсте; при включённой сетке резы прилипают к её узлам.">?</button>
+</label><input type="checkbox" id="inGridShow" title="Показывать сетку" style="width:auto;padding:0;margin:0;border:none;background:transparent;flex:0 0 auto;cursor:pointer"><input id="inGridStep" type="number" value="10" step="1" min="1" max="100"></div>
+<div class="row"><label>Поворот</label>
+<select id="inRot">
+<option value="4">4 угла (0/90/180/270)</option>
+<option value="2">только 90°</option>
+<option value="1">без поворота</option>
+</select></div>
+<div class="row"><label>Стратегия расчёта</label>
+<select id="inStrategy" class="wide">
+<option value="area" selected>По площади (быстро)</option>
+<option value="maxDim">По длине</option>
+<option value="height">По высоте</option>
+<option value="width">По ширине</option>
+<option value="all">Все 4 (медленнее, лучше)</option>
+<option value="genetic">🧬 Генетика — плотно к углу (долго)</option>
+</select></div>
+<div class="ga-params" id="gaParams" style="display:none">
+  <div class="ga-title">🧬 Параметры генетики</div>
+  <div class="row"><label>Популяция</label>
+    <input id="gaPop" type="number" value="16" min="4" max="64" step="2"></div>
+  <div class="row"><label>Поколений</label>
+    <input id="gaGen" type="number" value="25" min="5" max="100" step="1"></div>
+  <div class="row"><label>Мутация, %</label>
+    <input id="gaMut" type="number" value="20" min="1" max="60" step="1"></div>
+  <div class="hint" id="gaEstimate" style="color:#5a2a8a">—</div>
+</div>
+<div class="hint">Итоговый зазор = kerf + gap = <span id="sumGap" class="sum">7</span> мм</div>
+<div class="limit-row">
+<div class="row" style="margin:0"><label>Макс. листов</label>
+<input id="inMaxSheets" type="number" value="5" step="1" min="1" max="100"></div>
+<div class="hint" style="color:#8a5a00">Раскладка остановится при достижении лимита</div>
+</div>
+<div class="remnant-row">
+<div class="row" style="margin:0"><label>
+<input type="checkbox" id="inRemnantOn">Отрез делового отхода</label></div>
+<div class="row" style="margin:4px 0 0 0">
+<label style="font-size:11px">Мин. сторона остатка, мм</label>
+<input id="inRemnantMin" type="number" value="300" step="50" min="50"></div>
+<div class="hint">Отрезает пустую часть листа прямыми резами</div>
+</div>
+<div class="hint" style="margin-top:6px">Параметры сохраняются автоматически</div>
+</div>
+
+<div class="group">
+<h3>Детали</h3>
+<div class="job-row">
+<label>Задание:</label>
+<select id="jobSelect"></select>
+<button type="button" id="btnNewJob" title="Новое задание">+</button>
+<button type="button" id="btnRenameJob" title="Переименовать задание">✏</button>
+<button type="button" class="danger" id="btnDeleteJob" title="Удалить задание">🗑</button>
+</div>
+<div class="row">
+<button id="btnAdd" style="flex:1">+ Добавить DXF (пакетно)</button>
+<button id="btnClear" class="danger">Очистить</button></div>
+<input id="fileInput" type="file" accept=".dxf" multiple hidden>
+<div id="partsTableWrap">
+<div class="empty">Файлы не добавлены. Перетащите DXF сюда.</div></div>
+<div class="batch-bar">
+<label>Кол-во выдел.:</label>
+<input id="batchQty" type="number" min="1" value="1">
+<button class="small" id="btnApplyQty">Применить</button>
+<button class="small" id="btnDupSelected" title="Дублировать строки в таблице деталей">Дублировать</button>
+<button class="small danger" id="btnDelSelected">Удалить</button>
+<span class="sel-info" id="selInfo"></span></div>
+<div class="row" style="margin-top:6px">
+<button id="btnTransferUnplaced" style="flex:1" title="Перенести не поместившиеся детали в новое задание">⤵ Перенести непоместившиеся в новое задание</button>
+</div>
+</div>
+
+<div id="report">—</div>
+</aside>
+<main id="main">
+<canvas id="canvas"></canvas>
+<div id="canvasHint">ЛКМ на пустом — рамка выделения · ЛКМ на детали — тащить · Shift+рамка — добавить · R/Z — поворот/зеркало · Delete — убрать · Esc — снять выделение · Alt — шаг сетки</div>
+<div id="progressOverlay">
+<div class="progress-card">
+<div class="spinner"></div>
+<div class="progress-title">Идёт расчёт раскладки</div>
+<div class="progress-sub" id="progressSub">Подготовка...</div>
+<div class="progress-bar-track"><div class="progress-bar-fill" id="progressFill"></div></div>
+<div class="progress-pct" id="progressPct">0%</div>
+<button id="btnCancelNest" class="progress-cancel-btn">✕ Отменить раскладку</button>
+</div></div>
+</main>
+</div>
+</div>
+
+<div class="modal-overlay" id="autofitModal">
+<div class="modal-window">
+<div class="modal-header">
+<span>🎯 Подбор заготовки</span>
+<button class="close-btn" id="btnCloseAutofit" title="Закрыть">✕</button>
+</div>
+<div class="modal-body">
+<div class="row"><label>Режим</label>
+<select id="afMode" class="wide">
+<option value="fixX" selected>Фиксировать X (варьируем Y)</option>
+<option value="fixY">Фиксировать Y (варьируем X)</option>
+<option value="both">Оба свободны</option>
+</select></div>
+<div class="af-dim" id="afXDim">
+<div class="row" style="margin:0 0 4px 0"><label>X, мм — диапазон</label></div>
+<div class="range-row">
+<input id="afXFrom" type="number" value="2000" step="100" min="1"><span>…</span>
+<input id="afXTo" type="number" value="4000" step="100" min="1">
+<span style="margin-left:8px">шаг</span><input id="afXStep" type="number" value="100" step="10" min="1"></div>
+</div>
+<div class="af-dim" id="afYDim">
+<div class="row" style="margin:0 0 4px 0"><label>Y, мм — диапазон</label></div>
+<div class="range-row">
+<input id="afYFrom" type="number" value="500" step="50" min="1"><span>…</span>
+<input id="afYTo" type="number" value="1000" step="50" min="1">
+<span style="margin-left:8px">шаг</span><input id="afYStep" type="number" value="50" step="10" min="1"></div>
+</div>
+<div class="row"><label>Критерий лучшего</label>
+<select id="afCriterion" class="wide">
+<option value="area" selected>Минимум площади закупки</option>
+<option value="sheets">Минимум листов</option>
+<option value="eff">Максимум КПД</option>
+</select></div>
+<div class="af-count" id="afCount">—</div>
+<div class="hint">При подборе используется стратегия «по площади». Показываются 5 лучших вариантов.</div>
+<div id="afStatus" style="font-size:12px;color:#8a5a00;margin-top:6px;min-height:16px"></div>
+<div id="afResults" style="display:none"></div>
+</div>
+<div class="modal-footer">
+<button id="btnAutoFit" class="primary">🎯 Подобрать</button>
+<button id="btnAutoFitStop" class="danger" disabled>Стоп</button>
+<button id="btnCloseAutofit2">Закрыть</button>
+</div>
+</div>
+</div>
+
+<div class="modal-overlay" id="reportModal">
+<div class="modal-window" style="width:640px">
+<div class="modal-header" style="background:#eaf4ff;border-bottom-color:#c9e0f5;color:#004a99">
+<span>ℹ Информация о раскладке</span>
+<button class="close-btn" id="btnCloseReport" title="Закрыть" style="color:#004a99">✕</button>
+</div>
+<div class="modal-body">
+<div id="reportContent" style="font-size:13px;color:#333;white-space:pre-line;line-height:1.6">—</div>
+</div>
+<div class="modal-footer">
+<button id="btnCloseReport2">Закрыть</button>
+</div>
+</div>
+</div>
+
+<div class="modal-overlay" id="arrayModal">
+<div class="modal-window" style="width:460px">
+<div class="modal-header" style="background:#f0eaff;border-bottom-color:#c9b8e8;color:#5a2a8a">
+<span>🔲 Массив деталей (SheetCam)</span>
+<button class="close-btn" id="btnCloseArray" title="Закрыть" style="color:#5a2a8a">✕</button>
+</div>
+<div class="modal-body">
+<div class="row"><label>Деталь</label>
+<select id="arrayPartSelect" class="wide"></select></div>
+<div class="row" style="margin:2px 0"><label><input type="checkbox" id="arrayBySheet">По заготовке (авто рядов/колонок)</label></div>
+<div class="array-grid">
+<div class="row"><label>Рядов (Y)</label><input id="arrayRows" type="number" min="1" max="100" value="2"></div>
+<div class="row"><label>Колонок (X)</label><input id="arrayCols" type="number" min="1" max="100" value="3"></div>
+</div>
+<div class="array-grid">
+<div class="row"><label>Интервал X, мм</label><input id="arraySpacingX" type="number" min="0" step="1" value="5"></div>
+<div class="row"><label>Интервал Y, мм</label><input id="arraySpacingY" type="number" min="0" step="1" value="5"></div>
+</div>
+<div class="row"><label>Поворот</label>
+<select id="arrayAngle" class="wide">
+<option value="0">0°</option>
+<option value="90">90°</option>
+<option value="180">180°</option>
+<option value="270">270°</option>
+</select></div>
+<div class="array-preview-info" id="arrayPreviewInfo">—</div>
+<div class="hint">Предпросмотр массива отображается на холсте полупрозрачным.</div>
+</div>
+<div class="modal-footer">
+<button id="btnArrayPlace" class="primary">✅ Разместить на листе</button>
+<button id="btnArrayCancel">Отмена</button>
+</div>
+</div>
+</div>
+
+<div id="contextMenu" class="context-menu"></div>
+<div id="dropOverlay">Отпустите DXF-файлы для загрузки</div>
+<div id="printArea"></div>
+<script src="https://cdn.jsdelivr.net/npm/dxf-parser@1.1.2/dist/dxf-parser.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
