@@ -2,7 +2,7 @@
 setlocal
 
 set PORT=8000
-set FILE=Raskladka.html
+set FILE=index.html
 set URL=http://localhost:%PORT%/%FILE%
 
 echo Запуск локального сервера на порту %PORT%...
