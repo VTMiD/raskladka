@@ -1,4 +1,4 @@
-import { rotatePart, polysCollide, isPartInsideSheetPolygon } from './geometry.js';
+import { rotatePart, isPartInsideSheetPolygon } from './geometry.js';
 import { sleep } from './utils.js';
 
 function mulberry32(seed) {
@@ -10,6 +10,43 @@ function mulberry32(seed) {
     x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
     return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+function polysCollideSimple(A, B, buffer){
+  // Упрощённая проверка для GA — bbox-фильтр + сегментная проверка
+  for (const a of A){
+    let ax0 = Infinity, ay0 = Infinity, ax1 = -Infinity, ay1 = -Infinity;
+    for (const [x, y] of a){
+      if (x < ax0) ax0 = x; if (x > ax1) ax1 = x;
+      if (y < ay0) ay0 = y; if (y > ay1) ay1 = y;
+    }
+    for (const b of B){
+      let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+      for (const [x, y] of b){
+        if (x < bx0) bx0 = x; if (x > bx1) bx1 = x;
+        if (y < by0) by0 = y; if (y > by1) by1 = y;
+      }
+      if (ax1 + buffer <= bx0) continue;
+      if (ax0 - buffer >= bx1) continue;
+      if (ay1 + buffer <= by0) continue;
+      if (ay0 - buffer >= by1) continue;
+      // Полная проверка
+      const na = a.length, nb = b.length;
+      for (let i = 0; i < na; i++){
+        const a1 = a[i], a2 = a[(i + 1) % na];
+        for (let j = 0; j < nb; j++){
+          const b1 = b[j], b2 = b[(j + 1) % nb];
+          const d1 = (b2[0]-b1[0])*(a1[1]-b1[1]) - (b2[1]-b1[1])*(a1[0]-b1[0]);
+          const d2 = (b2[0]-b1[0])*(a2[1]-b1[1]) - (b2[1]-b1[1])*(a2[0]-b1[0]);
+          const d3 = (a2[0]-a1[0])*(b1[1]-a1[1]) - (a2[1]-a1[1])*(b1[0]-a1[0]);
+          const d4 = (a2[0]-a1[0])*(b2[1]-a1[1]) - (a2[1]-a1[1])*(b2[0]-a1[0]);
+          if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+              ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 function collidesAt(sheet, self, polygons, w, h, x, y, buffer, W, H, sheetPolygons, edge) {
@@ -30,7 +67,7 @@ function collidesAt(sheet, self, polygons, w, h, x, y, buffer, W, H, sheetPolygo
     if (y + h + buffer <= ob[1]) continue;
     if (y - buffer      >= ob[3]) continue;
     const absB = other.polygons.map(r => r.map(([px, py]) => [px + other.x, py + other.y]));
-    if (polysCollide(absA, absB, buffer)) return true;
+    if (polysCollideSimple(absA, absB, buffer)) return true;
   }
   return false;
 }
@@ -47,7 +84,7 @@ function maxSlide(sheet, pl, dirX, dirY, W, H, buffer, sheetPolygons, edge) {
   if (hi <= 1e-4) return 0;
   if (!collidesAt(sheet, pl, pl.polygons, w, h, pl.x + dirX*hi, pl.y + dirY*hi, buffer, W, H, sheetPolygons, edge)) return hi;
   let lo = 0;
-  for (let i = 0; i < 22; i++) {
+  for (let i = 0; i < 18; i++) {
     const mid = (lo + hi) / 2;
     if (collidesAt(sheet, pl, pl.polygons, w, h, pl.x + dirX*mid, pl.y + dirY*mid, buffer, W, H, sheetPolygons, edge)) hi = mid;
     else lo = mid;
@@ -58,7 +95,7 @@ function maxSlide(sheet, pl, dirX, dirY, W, H, buffer, sheetPolygons, edge) {
 function gravityCompact(sheet, pl, W, H, buffer, sheetPolygons, edge) {
   const w = pl.bbox[2] - pl.bbox[0];
   const h = pl.bbox[3] - pl.bbox[1];
-  for (let iter = 0; iter < 16; iter++) {
+  for (let iter = 0; iter < 12; iter++) {
     const dy = maxSlide(sheet, pl, 0, -1, W, H, buffer, sheetPolygons, edge);
     if (dy > 1e-3) { pl.y -= dy; pl.bbox = [pl.x, pl.y, pl.x + w, pl.y + h]; }
     const dx = maxSlide(sheet, pl, -1, 0, W, H, buffer, sheetPolygons, edge);
@@ -96,22 +133,33 @@ function generateCandidates(sheet, w, h, buffer, W, H) {
     seen.add(k);
     out.push([cx, cy]);
   }
-  out.sort((a, b) => (a[1] - b[1]) || (a[0] - b[0]));
   return out;
 }
 
-function tryPlaceOnSheet(sheet, inst, W, H, buffer, sheetPolygons, edge) {
+// ────────────────────────────────────────────────────────────────
+// Укладка одной детали с ограничением числа кандидатов (для скорости)
+// order: 'row' | 'col'
+// ────────────────────────────────────────────────────────────────
+const MAX_CANDIDATES_TO_TRY = 60;
+
+function tryPlaceOnSheet(sheet, inst, W, H, buffer, sheetPolygons, edge, order) {
   const allCands = [];
   for (const variant of inst.variants) {
     const { w, h } = variant;
     if (w > W + 0.001 || h > H + 0.001) continue;
     const cands = generateCandidates(sheet, w, h, buffer, W, H);
     for (const [cx, cy] of cands) {
-      allCands.push({ variant, cx, cy, score: cy * 1e6 + cx });
+      const score = order === 'col' ? (cx * 1e6 + cy) : (cy * 1e6 + cx);
+      allCands.push({ variant, cx, cy, score });
     }
   }
   allCands.sort((a, b) => a.score - b.score);
-  for (const { variant, cx, cy } of allCands) {
+
+  const toTry = allCands.length > MAX_CANDIDATES_TO_TRY
+    ? allCands.slice(0, MAX_CANDIDATES_TO_TRY)
+    : allCands;
+
+  for (const { variant, cx, cy } of toTry) {
     const { polygons, w, h } = variant;
     if (collidesAt(sheet, null, polygons, w, h, cx, cy, buffer, W, H, sheetPolygons, edge)) continue;
     const placed = {
@@ -127,7 +175,11 @@ function tryPlaceOnSheet(sheet, inst, W, H, buffer, sheetPolygons, edge) {
   return false;
 }
 
-function decode(genome, instances, params) {
+// ────────────────────────────────────────────────────────────────
+// Декодирование генома → результат укладки
+// order: 'row' | 'col'
+// ────────────────────────────────────────────────────────────────
+function decode(genome, instances, params, order) {
   const { sheetW, sheetH, edge, kerf, gap, maxSheets, sheetPolygons } = params;
   const W = sheetW - 2*edge, H = sheetH - 2*edge;
   const buffer = kerf + gap;
@@ -138,17 +190,24 @@ function decode(genome, instances, params) {
     const inst = instances[idx];
     let placed = false;
     for (const sheet of sheets) {
-      if (tryPlaceOnSheet(sheet, inst, W, H, buffer, sheetPolygons, edge)) { placed = true; break; }
+      if (tryPlaceOnSheet(sheet, inst, W, H, buffer, sheetPolygons, edge, order)) { placed = true; break; }
     }
     if (!placed && sheets.length < limit) {
       const sheet = { placed: [] };
-      if (tryPlaceOnSheet(sheet, inst, W, H, buffer, sheetPolygons, edge)) { sheets.push(sheet); placed = true; }
+      if (tryPlaceOnSheet(sheet, inst, W, H, buffer, sheetPolygons, edge, order)) { sheets.push(sheet); placed = true; }
     }
     if (!placed) unplaced.push(inst.name);
   }
   return { sheets, unplaced };
 }
 
+// ────────────────────────────────────────────────────────────────
+// Fitness: меньше — лучше
+//   • Штраф за непомещённые (огромный)
+//   • Штраф за лишние листы
+//   • Площадь bbox на каждом листе (компактность)
+//   • Бонус за плотное заполнение первого листа
+// ────────────────────────────────────────────────────────────────
 function fitnessOf(result) {
   let bboxSum = 0;
   for (const sh of result.sheets) {
@@ -159,7 +218,11 @@ function fitnessOf(result) {
     }
     bboxSum += mx * my;
   }
-  return result.unplaced.length * 1e12 + result.sheets.length * 1e9 + bboxSum;
+  const firstCount = result.sheets.length > 0 ? result.sheets[0].placed.length : 0;
+  return result.unplaced.length * 1e12
+       + result.sheets.length * 1e9
+       + bboxSum
+       - firstCount * 1e3;
 }
 
 function randomPermutation(n, rng) {
@@ -207,32 +270,72 @@ function tournament(pop, fitness, size, rng) {
   return best;
 }
 
+// ────────────────────────────────────────────────────────────────
+// Мультистарт: жадный геном по заданному компаратору
+// ────────────────────────────────────────────────────────────────
+function greedyGenome(instances, cmp) {
+  return Array.from({ length: instances.length }, (_, i) => i)
+    .sort((a, b) => cmp(instances[a], instances[b]));
+}
+
+// ────────────────────────────────────────────────────────────────
+// Главная функция
+// ────────────────────────────────────────────────────────────────
 export async function nestGA(parts, params, onProgress, shouldStop) {
   const { rotMode } = params;
   const angles = rotMode === 4 ? [0, 90, 180, 270] : rotMode === 2 ? [0, 90] : [0];
+
   const instances = [];
   for (let pi = 0; pi < parts.length; pi++) {
     const part = parts[pi];
     const variants = angles.map(a => rotatePart(part, a));
     for (let k = 0; k < part.qty; k++) {
-      instances.push({ partIdx: pi, name: part.name, variants });
+      instances.push({
+        partIdx: pi, name: part.name, variants,
+        area: part.area, width: part.width, height: part.height,
+        maxDim: Math.max(part.width, part.height)
+      });
     }
   }
   const N = instances.length;
   if (!N) return { sheets: [], unplaced: [] };
 
-  const POP   = Math.max(4,  Math.min(64,  params.gaPop || 16));
-  const GEN   = Math.max(5,  Math.min(100, params.gaGen || 25));
+  // Дефолты (мягкие): pop=12, gen=15 — быстро и качественно
+  const POP   = Math.max(6,  Math.min(64,  params.gaPop || 12));
+  const GEN   = Math.max(3,  Math.min(100, params.gaGen || 15));
   const MUT   = Math.max(0.01, Math.min(0.6, (params.gaMut || 20) / 100));
-  const ELITE = Math.max(2, Math.floor(POP * 0.15));
+  const ELITE = Math.max(2, Math.floor(POP * 0.2));
   const TOURN = 3;
+  const STALL_LIMIT = 4;
 
   const rng = mulberry32(0xDEADBEEF ^ N);
 
-  let population = [];
-  for (let i = 0; i < POP; i++) population.push(randomPermutation(N, rng));
+  // === Мультистарт: 3 жадных + их мутации + рандом ===
+  const seeds = [];
+  seeds.push(greedyGenome(instances, (a, b) => (b.area - a.area) || (b.maxDim - a.maxDim)));
+  seeds.push(greedyGenome(instances, (a, b) => (b.width - a.width) || (b.height - a.height)));
+  seeds.push(greedyGenome(instances, (a, b) => (b.height - a.height) || (b.width - a.width)));
+
+  while (seeds.length < POP) {
+    if (seeds.length < POP && rng() < 0.5) {
+      // Мутация от жадного (лучше, чем чистый рандом)
+      const base = seeds[Math.floor(rng() * 3)].slice();
+      const nMut = Math.max(1, Math.floor(N * 0.25));
+      for (let k = 0; k < nMut; k++) {
+        const i = Math.floor(rng() * N);
+        const j = Math.floor(rng() * N);
+        [base[i], base[j]] = [base[j], base[i]];
+      }
+      seeds.push(base);
+    } else {
+      // Чистый рандом для разнообразия
+      seeds.push(randomPermutation(N, rng));
+    }
+  }
+  let population = seeds.slice(0, POP);
 
   let bestResult = null, bestFit = Infinity;
+  let stall = 0;
 
   for (let gen = 0; gen < GEN; gen++) {
     if (shouldStop && shouldStop()) {
@@ -241,30 +344,47 @@ export async function nestGA(parts, params, onProgress, shouldStop) {
     }
 
     const fitness = new Array(POP);
-    let cancelledInGen = false;
+    let cancelled = false;
+    let improvedThisGen = false;
+
     for (let i = 0; i < POP; i++) {
-      if (shouldStop && shouldStop()) { cancelledInGen = true; break; }
-      const r = decode(population[i], instances, params);
-      const f = fitnessOf(r);
-      fitness[i] = f;
-      if (f < bestFit) { bestFit = f; bestResult = r; }
+      if (shouldStop && shouldStop()) { cancelled = true; break; }
+
+      // DUAL decode: row и col, берём лучший
+      const rRow = decode(population[i], instances, params, 'row');
+      const rCol = decode(population[i], instances, params, 'col');
+      const fRow = fitnessOf(rRow);
+      const fCol = fitnessOf(rCol);
+      const pick = fRow <= fCol
+        ? { r: rRow, f: fRow }
+        : { r: rCol, f: fCol };
+
+      fitness[i] = pick.f;
+      if (pick.f < bestFit - 1) {
+        bestFit = pick.f;
+        bestResult = pick.r;
+        improvedThisGen = true;
+      }
     }
-    if (cancelledInGen) {
-      return { ...(bestResult || { sheets: [], unplaced: [] }), cancelled: true };
-    }
+    if (cancelled) break;
+
+    if (improvedThisGen) stall = 0; else stall++;
+    if (stall >= STALL_LIMIT && gen >= 2) break;
 
     if (onProgress) {
       onProgress(
         (gen + 1) / GEN,
         `🧬 Поколение ${gen + 1}/${GEN} • лучший: ${bestResult.sheets.length} л., ` +
-        `непомещённых: ${bestResult.unplaced.length}`
+        `непомещённых: ${bestResult.unplaced.length}` +
+        (stall > 0 ? ` · без улучшений: ${stall}` : '')
       );
     }
     await sleep(0);
 
+    // === Селекция + скрещивание ===
     const sorted = Array.from({ length: POP }, (_, i) => i).sort((a, b) => fitness[a] - fitness[b]);
     const newPop = [];
-    for (let i = 0; i < ELITE; i++) newPop.push(population[sorted[i]]);
+    for (let i = 0; i < ELITE; i++) newPop.push(population[sorted[i]].slice());
     while (newPop.length < POP) {
       const p1 = tournament(population, fitness, TOURN, rng);
       const p2 = tournament(population, fitness, TOURN, rng);

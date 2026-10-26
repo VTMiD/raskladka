@@ -4,6 +4,8 @@ import { pushHistory } from './history.js';
 import {
   rotateSelected, mirrorSelected, removePlacedPart, duplicatePlacedPart,
   toggleFixSelected, unfixAllPlaced,
+  rotateSelectedGroup, mirrorSelectedGroup, deleteSelectedGroup,
+  toggleFixGroup, duplicateSelection,
 } from './canvas-ops.js';
 
 const contextMenuEl = () => document.getElementById('contextMenu');
@@ -41,7 +43,25 @@ export function showContextMenu(screenX, screenY, hit){
   el.innerHTML = '';
   el.style.display = 'block';
 
-  if(hit){
+  // Групповой режим: есть выделенные детали (2+ или 1 в selectedParts)
+  const isGroup = !!(state.selectedParts && state.selectedParts.length > 0);
+
+  // ─── Блок фиксации ───
+  if(isGroup){
+    // Определяем, все ли выделенные уже зафиксированы (для подписи)
+    let allFixed = true;
+    for(const sp of state.selectedParts){
+      const pl = state.sheets[sp.sheetIdx]?.placed[sp.placedIdx];
+      if(!pl || !pl._fixed){ allFixed = false; break; }
+    }
+    el.appendChild(buildContextMenuItem(
+      allFixed
+        ? `🔓 Снять фиксацию (выделенные: ${state.selectedParts.length})`
+        : `📌 Зафиксировать выделенные (${state.selectedParts.length})`,
+      () => toggleFixGroup()
+    ));
+    el.appendChild(document.createElement('div')).className = 'context-menu-sep';
+  } else if(hit){
     const pl = state.sheets[hit.sheetIdx]?.placed[hit.placedIdx];
     if(pl){
       const isFixed = !!pl._fixed;
@@ -56,7 +76,29 @@ export function showContextMenu(screenX, screenY, hit){
   el.appendChild(buildContextMenuItem('🔓 Снять фиксацию со всех', () => unfixAllPlaced()));
   el.appendChild(buildContextMenuItem('▶ На остатке', () => runNestRemainder()));
 
-  if(hit){
+  // ─── Блок действий с выделением / деталью ───
+  if(isGroup){
+    el.appendChild(document.createElement('div')).className = 'context-menu-sep';
+    el.appendChild(buildContextMenuItem('🔄 Повернуть на 90° (R)', () => {
+      if(rotateSelectedGroup(1)) pushHistory();
+    }));
+    el.appendChild(buildContextMenuItem('🔃 Зеркально ↔ (Z)', () => {
+      if(mirrorSelectedGroup('x')) pushHistory();
+    }));
+    el.appendChild(buildContextMenuItem('🔃 Зеркально ↕ (Shift+Z)', () => {
+      if(mirrorSelectedGroup('y')) pushHistory();
+    }));
+    el.appendChild(document.createElement('div')).className = 'context-menu-sep';
+    el.appendChild(buildContextMenuItem(
+      `⧉ Дублировать выделенные (${state.selectedParts.length})`,
+      () => duplicateSelection()
+    ));
+    el.appendChild(buildContextMenuItem(
+      `🗑 Удалить выделенные (${state.selectedParts.length})`,
+      () => deleteSelectedGroup(),
+      { danger: true }
+    ));
+  } else if(hit){
     const pl = state.sheets[hit.sheetIdx]?.placed[hit.placedIdx];
     const isFixed = !!(pl && pl._fixed);
     el.appendChild(document.createElement('div')).className = 'context-menu-sep';
@@ -79,7 +121,7 @@ export function showContextMenu(screenX, screenY, hit){
   el.appendChild(document.createElement('div')).className = 'context-menu-sep';
   el.appendChild(buildContextMenuItem('✖ Закрыть', () => {}));
 
-  const menuW = 260;
+  const menuW = 280;
   const menuH = el.offsetHeight || 320;
   let x = screenX, y = screenY;
   if(x + menuW > window.innerWidth - 8)  x = window.innerWidth  - menuW - 8;

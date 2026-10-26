@@ -1,11 +1,17 @@
 import { rotatePart, polysCollide, isPartInsideSheetPolygon } from './geometry.js';
 import { sleep } from './utils.js';
 
+// ────────────────────────────────────────────────────────────
+// Стратегии:
+//   area     — по площади детали. Перебирает 2 порядка укладки
+//              (row: построчно и col: постолбцово) и берёт лучший.
+//   width    — по длине листа (X): длинная сторона вдоль X, укладка рядами.
+//   height   — по ширине листа (Y): длинная сторона вдоль Y, укладка столбцами.
+// ────────────────────────────────────────────────────────────
 export const STRATEGIES = [
-  { key:'area',   name:'по площади', cmp:(a,b)=>b.area-a.area || b.maxDim-a.maxDim },
-  { key:'maxDim', name:'по длине',   cmp:(a,b)=>b.maxDim-a.maxDim || b.area-a.area },
-  { key:'height', name:'по высоте',  cmp:(a,b)=>b.height-a.height || b.width-a.width },
-  { key:'width',  name:'по ширине',  cmp:(a,b)=>b.width-a.width || b.height-a.height }
+  { key:'area',   name:'по площади',    cmp:(a,b)=>b.area-a.area       || b.maxDim-a.maxDim },
+  { key:'width',  name:'по длине (X)',  cmp:(a,b)=>b.width-a.width     || b.height-a.height || b.area-a.area },
+  { key:'height', name:'по ширине (Y)', cmp:(a,b)=>b.height-a.height   || b.width-a.width   || b.area-a.area },
 ];
 
 function cellKey(gx, gy){ return gx * 1000000 + gy; }
@@ -226,7 +232,12 @@ function placePart(sheet, inst, variant, x, y, grid, cellSize){
   addToGrid(grid, newPlaced, cellSize);
 }
 
-function tryPlaceInSheet(sheet, inst, W, H, buffer, nestInHoles, sheetPolygons, edge){
+function calcScore(cx, cy, order){
+  if (order === 'col') return cx * 1e6 + cy;
+  return cy * 1e6 + cx;
+}
+
+function tryPlaceInSheet(sheet, inst, W, H, buffer, nestInHoles, sheetPolygons, edge, order){
   const cellSize = Math.max(150, buffer * 4);
 
   let grid;
@@ -237,7 +248,6 @@ function tryPlaceInSheet(sheet, inst, W, H, buffer, nestInHoles, sheetPolygons, 
     sheet._grid = { cellSize, grid };
   }
 
-  // 1. Быстрая попытка (0,0) — если контур позволяет
   for (const variant of inst.variants){
     const { w, h } = variant;
     if (w > W + 0.001 || h > H + 0.001) continue;
@@ -247,48 +257,46 @@ function tryPlaceInSheet(sheet, inst, W, H, buffer, nestInHoles, sheetPolygons, 
     }
   }
 
-  // 2. Мелкий скан угла для ПЕРВОЙ детали на пустом листе.
-  //    Идём построчно: сначала y=0, потом y=step и т.д.,
-  //    внутри строки — слева-направо. Первая подходящая = ближайшая к (0,0).
-  //    Шаг адаптивный: 5…20 мм, чтобы не мельчить слишком сильно,
-  //    но и не проскочить «ступеньку» контура с вырезом.
   if (sheet.placed.length === 0 && sheetPolygons && sheetPolygons.length){
     for (const variant of inst.variants){
       const { w, h } = variant;
       if (w > W + 0.001 || h > H + 0.001) continue;
 
-      // Шаг скана — не крупнее 1/8 меньшей стороны детали,
-      // но не меньше 5 мм и не больше 20 мм.
       const minDim = Math.min(w, h);
       const step = Math.max(5, Math.min(20, Math.ceil(minDim / 8)));
 
       let found = false;
-      for (let gy = 0; gy <= H - h + 1e-3 && !found; gy += step){
+      if (order === 'col'){
         for (let gx = 0; gx <= W - w + 1e-3 && !found; gx += step){
-          if (collidesAtVariant(sheet, variant, gx, gy, buffer, W, H, grid, cellSize, nestInHoles, sheetPolygons, edge)) continue;
-
-          // Финальная доводка: «сдвигаем» точку к углу с точностью 1 мм,
-          // насколько позволит контур. Это дотягивает положение до реальной
-          // кромки, если шаг скана дал небольшой зазор.
-          let bestX = gx, bestY = gy;
-          for (let fine = 1; fine <= step; fine++){
-            if (bestX > 0 && !collidesAtVariant(sheet, variant, bestX - fine, bestY, buffer, W, H, grid, cellSize, nestInHoles, sheetPolygons, edge)){
-              bestX -= fine;
+          for (let gy = 0; gy <= H - h + 1e-3 && !found; gy += step){
+            if (collidesAtVariant(sheet, variant, gx, gy, buffer, W, H, grid, cellSize, nestInHoles, sheetPolygons, edge)) continue;
+            let bestX = gx, bestY = gy;
+            for (let fine = 1; fine <= step; fine++){
+              if (bestX > 0 && !collidesAtVariant(sheet, variant, bestX - fine, bestY, buffer, W, H, grid, cellSize, nestInHoles, sheetPolygons, edge)) bestX -= fine;
+              if (bestY > 0 && !collidesAtVariant(sheet, variant, bestX, bestY - fine, buffer, W, H, grid, cellSize, nestInHoles, sheetPolygons, edge)) bestY -= fine;
             }
-            if (bestY > 0 && !collidesAtVariant(sheet, variant, bestX, bestY - fine, buffer, W, H, grid, cellSize, nestInHoles, sheetPolygons, edge)){
-              bestY -= fine;
-            }
+            placePart(sheet, inst, variant, bestX, bestY, grid, cellSize);
+            found = true;
           }
-
-          placePart(sheet, inst, variant, bestX, bestY, grid, cellSize);
-          found = true;
+        }
+      } else {
+        for (let gy = 0; gy <= H - h + 1e-3 && !found; gy += step){
+          for (let gx = 0; gx <= W - w + 1e-3 && !found; gx += step){
+            if (collidesAtVariant(sheet, variant, gx, gy, buffer, W, H, grid, cellSize, nestInHoles, sheetPolygons, edge)) continue;
+            let bestX = gx, bestY = gy;
+            for (let fine = 1; fine <= step; fine++){
+              if (bestX > 0 && !collidesAtVariant(sheet, variant, bestX - fine, bestY, buffer, W, H, grid, cellSize, nestInHoles, sheetPolygons, edge)) bestX -= fine;
+              if (bestY > 0 && !collidesAtVariant(sheet, variant, bestX, bestY - fine, buffer, W, H, grid, cellSize, nestInHoles, sheetPolygons, edge)) bestY -= fine;
+            }
+            placePart(sheet, inst, variant, bestX, bestY, grid, cellSize);
+            found = true;
+          }
         }
       }
       if (found) return true;
     }
   }
 
-  // 3. Кандидаты от уже размещённых деталей
   const baseCandMap = new Map();
   baseCandMap.set('0:0', [0, 0]);
   const holeCands = [];
@@ -336,7 +344,7 @@ function tryPlaceInSheet(sheet, inst, W, H, buffer, nestInHoles, sheetPolygons, 
       if (cx < -0.001 || cy < -0.001) continue;
       if (cx + w > W + 0.001) continue;
       if (cy + h > H + 0.001) continue;
-      const score = cy * 1e6 + cx;
+      const score = calcScore(cx, cy, order);
       if (score >= bestScore) continue;
       if (collidesAtVariant(sheet, variant, cx, cy, buffer, W, H, grid, cellSize, nestInHoles, sheetPolygons, edge)) continue;
       bestScore = score;
@@ -363,7 +371,7 @@ function tryPlaceInSheet(sheet, inst, W, H, buffer, nestInHoles, sheetPolygons, 
         if (cx < -0.001 || cy < -0.001) continue;
         if (cx + w > W + 0.001) continue;
         if (cy + h > H + 0.001) continue;
-        const score = cy * 1e6 + cx - 100000;
+        const score = calcScore(cx, cy, order) - 100000;
         if (score >= bestScore) continue;
         if (collidesAtVariant(sheet, variant, cx, cy, buffer, W, H, grid, cellSize, nestInHoles, sheetPolygons, edge)) continue;
         bestScore = score;
@@ -394,13 +402,15 @@ function cloneSheet(sheet){
   return { placed: sheet.placed.map(clonePlaced) };
 }
 
-export async function nestWithOrder(parts, params, cmp, onProgress, seedSheets, shouldStop){
+export async function nestWithOrder(parts, params, cmp, onProgress, seedSheets, shouldStop, strategyKey = 'area', forcedOrder = null){
   const { sheetW, sheetH, edge, kerf, gap, rotMode, maxSheets, sheetPolygons } = params;
   const nestInHoles = params.nestInHoles !== false;
   const W = sheetW - 2*edge, H = sheetH - 2*edge;
   if (W <= 0 || H <= 0) throw new Error('Слишком большой отступ от края');
   const buffer = kerf + gap;
   const angles = rotMode === 4 ? [0,90,180,270] : rotMode === 2 ? [0,90] : [0];
+
+  let order = forcedOrder || (strategyKey === 'height' ? 'col' : 'row');
 
   const instances = [];
   for (let pi = 0; pi < parts.length; pi++){
@@ -417,6 +427,16 @@ export async function nestWithOrder(parts, params, cmp, onProgress, seedSheets, 
   }
   instances.sort(cmp);
 
+  if (strategyKey === 'width'){
+    for (const inst of instances){
+      inst.variants.sort((v1, v2) => (v2.w - v1.w) || (v2.h - v1.h));
+    }
+  } else if (strategyKey === 'height'){
+    for (const inst of instances){
+      inst.variants.sort((v1, v2) => (v2.h - v1.h) || (v2.w - v1.w));
+    }
+  }
+
   const sheets = seedSheets ? seedSheets.map(cloneSheet) : [];
   const unplaced = [];
   const total = instances.length;
@@ -429,12 +449,12 @@ export async function nestWithOrder(parts, params, cmp, onProgress, seedSheets, 
     const inst = instances[i];
     let placed = false;
     for (const sheet of sheets){
-      if (tryPlaceInSheet(sheet, inst, W, H, buffer, nestInHoles, sheetPolygons, edge)){ placed = true; break; }
+      if (tryPlaceInSheet(sheet, inst, W, H, buffer, nestInHoles, sheetPolygons, edge, order)){ placed = true; break; }
     }
     if (!placed){
       if (sheets.length < limit){
         const sheet = { placed: [] };
-        if (tryPlaceInSheet(sheet, inst, W, H, buffer, nestInHoles, sheetPolygons, edge)){ sheets.push(sheet); placed = true; }
+        if (tryPlaceInSheet(sheet, inst, W, H, buffer, nestInHoles, sheetPolygons, edge, order)){ sheets.push(sheet); placed = true; }
       }
     }
     if (!placed) unplaced.push(inst.name);
@@ -451,21 +471,38 @@ export async function nest(parts, params, onProgress, strategyKey, seedSheets, s
   else useStrategies = STRATEGIES.filter(s => s.key === strategyKey);
   if (!useStrategies.length) useStrategies = [STRATEGIES[0]];
 
+  // Для стратегии "area" (и для "all") запускаем area дважды — с порядком row и col.
+  // Так "площадь" перестаёт проигрывать "ширине", т.к. пробует оба порядка.
+  const runs = [];
+  for (const strat of useStrategies){
+    if (strat.key === 'area'){
+      runs.push({ strat, order: 'row', label: 'площадь (построчно)' });
+      runs.push({ strat, order: 'col', label: 'площадь (постолбцово)' });
+    } else {
+      runs.push({ strat, order: null, label: strat.name });
+    }
+  }
+
   let best = null;
-  const N = useStrategies.length;
+  const N = runs.length;
   for (let s = 0; s < N; s++){
     if (shouldStop && shouldStop()){
       return best ? { ...best, cancelled: true } : { sheets: [], unplaced: [], cancelled: true };
     }
-    const strat = useStrategies[s];
-    const r = await nestWithOrder(parts, params, strat.cmp, p => {
-      if (onProgress) onProgress((s + p) / N, `Стратегия ${s+1} из ${N}: ${strat.name}`);
-    }, seedSheets, shouldStop);
+    const run = runs[s];
+    const r = await nestWithOrder(parts, params, run.strat.cmp, p => {
+      if (onProgress) onProgress((s + p) / N, `Стратегия ${s + 1} из ${N}: ${run.label}`);
+    }, seedSheets, shouldStop, run.strat.key, run.order);
+
     if (r.cancelled){
       return best ? { ...best, cancelled: true } : { ...r, cancelled: true };
     }
-    const totalR = r.sheets.reduce((s, sh) => s + sh.placed.length, 0);
-    const totalB = best ? best.sheets.reduce((s, sh) => s + sh.placed.length, 0) : -1;
+
+    r.strategyUsed = run.label;
+    r.strategyKey = run.strat.key;
+
+    const totalR = r.sheets.reduce((sum, sh) => sum + sh.placed.length, 0);
+    const totalB = best ? best.sheets.reduce((sum, sh) => sum + sh.placed.length, 0) : -1;
     if (!best
         || r.sheets.length < best.sheets.length
         || (r.sheets.length === best.sheets.length && totalR > totalB)){

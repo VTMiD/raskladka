@@ -21,6 +21,7 @@ import {
   rotateSelected, mirrorSelected, removePlacedPart,
   rotateSelectedGroup, mirrorSelectedGroup, deleteSelectedGroup,
   toggleFixGroup,
+  startDuplicateDrag, updateDuplicateGhost, commitDuplicateGhost, cancelDuplicateDrag,
 } from './canvas-ops.js';
 import { enterMeasureMode, exitMeasureMode, handleMeasureClick } from './canvas-measure.js';
 import { showContextMenu, hideContextMenu } from './canvas-context.js';
@@ -61,7 +62,7 @@ if(_btnFixToggle){
   }, true);
 }
 
-// ─── Mouse down на холсте ───
+// ─── Mouse down ───
 
 canvas.addEventListener('mousedown', e => {
   if(e.button !== 0) return;
@@ -94,6 +95,31 @@ canvas.addEventListener('mousedown', e => {
   const px = e.clientX - rect.left, py = e.clientY - rect.top;
   const w = screenToWorld(px, py); if(!w) return;
   const hit = hitTest(w.x, w.y);
+
+  // ─── РЕЖИМ ДУБЛИРОВАНИЯ ───
+  if(state.duplicateMode){
+    e.preventDefault();
+
+    if(state.duplicateGhost){
+      state.duplicateGhost._attached = true;
+      state.duplicateGhost._dragging = true;
+      updateDuplicateGhost(w);
+      canvas.style.cursor = state.duplicateGhost.valid ? 'copy' : 'not-allowed';
+      draw();
+      return;
+    }
+
+    if(hit){
+      if(startDuplicateDrag(w, hit)){
+        state.duplicateGhost._dragging = true;
+        canvas.style.cursor = 'copy';
+        draw();
+      }
+      return;
+    }
+
+    return;
+  }
 
   if(!hit){
     const lx = e.clientX - rect.left, ly = e.clientY - rect.top;
@@ -168,6 +194,21 @@ window.addEventListener('mousemove', e => {
     }
     return;
   }
+
+  if(state.duplicateMode && state.duplicateGhost){
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    if(px < 0 || py < 0 || px > rect.width || py > rect.height) return;
+    const w = screenToWorld(px, py);
+    if(w){
+      state.duplicateGhost._attached = true;
+      updateDuplicateGhost(w);
+      canvas.style.cursor = state.duplicateGhost.valid ? 'copy' : 'not-allowed';
+      draw();
+    }
+    return;
+  }
+
   if(state.groupSelectDrag){
     const rect = canvas.getBoundingClientRect();
     state.groupSelectDrag.x1 = e.clientX - rect.left;
@@ -191,9 +232,44 @@ window.addEventListener('mousemove', e => {
 
 // ─── Mouse up ───
 
-window.addEventListener('mouseup', () => {
+window.addEventListener('mouseup', e => {
   if(state.cutMode) return;
   if(state.measureMode) return;
+
+  // ─── РЕЖИМ ДУБЛИРОВАНИЯ: фиксация группы копий ───
+  if(state.duplicateMode && state.duplicateGhost && state.duplicateGhost._dragging){
+    const savedSrc = state.duplicateSource
+      ? { sheetIdx: state.duplicateSource.sheetIdx, indices: (state.duplicateSource.indices || []).slice() }
+      : null;
+    const success = commitDuplicateGhost();
+
+    if(success && savedSrc && savedSrc.indices.length){
+      const newSel = savedSrc.indices.map(idx => ({ sheetIdx: savedSrc.sheetIdx, placedIdx: idx }));
+      import('./canvas-ops.js').then(m => {
+        if(m && typeof m.startDuplicateDragFromSelection === 'function'){
+          m.startDuplicateDragFromSelection(newSel);
+          if(state.duplicateGhost){
+            state.duplicateGhost._attached = true;
+            state.duplicateGhost._dragging = false;
+            const rect = canvas.getBoundingClientRect();
+            if(e.clientX >= rect.left && e.clientX <= rect.right &&
+               e.clientY >= rect.top  && e.clientY <= rect.bottom){
+              const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+              if(w) updateDuplicateGhost(w);
+            }
+            canvas.style.cursor = state.duplicateGhost.valid ? 'copy' : 'not-allowed';
+          }
+          draw();
+        }
+      });
+    } else if(state.duplicateGhost){
+      state.duplicateGhost._dragging = false;
+      canvas.style.cursor = 'not-allowed';
+    }
+    draw();
+    return;
+  }
+
   if(state.groupSelectDrag){ finalizeGroupSelect(); return; }
   if(state.groupDrag){ endGroupDrag(); return; }
   if(!state.drag) return;
@@ -257,6 +333,12 @@ window.addEventListener('mouseup', () => {
 
 canvas.addEventListener('contextmenu', e => {
   e.preventDefault();
+
+  if(state.duplicateGhost){
+    cancelDuplicateDrag();
+    return;
+  }
+
   if(state.cutMode){ exitCutMode(); return; }
   if(state.measureMode){ exitMeasureMode(); return; }
   if(state.groupSelectMode){ exitGroupSelectMode(); return; }
@@ -266,8 +348,12 @@ canvas.addEventListener('contextmenu', e => {
   const w = screenToWorld(px, py); if(!w) return;
   const hit = hitTest(w.x, w.y);
   if(hit){
-    state.selectedPart = { sheetIdx: hit.sheetIdx, placedIdx: hit.placedIdx };
-    draw();
+    const inGroup = isInGroup(hit.sheetIdx, hit.placedIdx);
+    if(!inGroup){
+      state.selectedParts = [];
+      state.selectedPart = { sheetIdx: hit.sheetIdx, placedIdx: hit.placedIdx };
+      draw();
+    }
   }
   showContextMenu(e.clientX, e.clientY, hit);
 });
@@ -296,6 +382,22 @@ document.addEventListener('keydown', e => {
     }
     if(state.groupSelectMode || state.groupSelectDrag){
       exitGroupSelectMode();
+      return;
+    }
+    if(state.duplicateGhost){
+      cancelDuplicateDrag();
+      setStatus('Копия отменена. Продолжайте перетаскивать или нажмите Esc для выхода.');
+      return;
+    }
+    if(state.duplicateMode){
+      state.duplicateMode = false;
+      state.duplicateGhost = null;
+      state.duplicateSource = null;
+      canvas.style.cursor = '';
+      const btn = document.getElementById('btnDuplicateSelected');
+      if(btn) btn.classList.remove('active');
+      setStatus('Режим дублирования выключен');
+      draw();
       return;
     }
     if(state.selectedParts && state.selectedParts.length){

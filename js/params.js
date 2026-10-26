@@ -15,39 +15,36 @@ function roundCoord(v){
 export function readParams(){
   const profile = getActiveProfile();
   return {
-    sheetW: toMm($('inW').value),
-    sheetH: toMm($('inH').value),
-    thickness: parseFloat($('inThick').value) || 1,
-    edge: parseFloat($('inEdge').value) || 0,
-    kerf: parseFloat($('inKerf').value) || 0,
-    gap: parseFloat($('inGap').value) || 0,
-    rotMode: parseInt($('inRot').value, 10) || 1,
-    maxSheets: Math.max(1, parseInt($('inMaxSheets').value, 10) || 5),
-    remnantOn: $('inRemnantOn').checked,
-    remnantMin: Math.max(20, parseFloat($('inRemnantMin').value) || 300),
+    sheetW: toMm($('inW')?.value),
+    sheetH: toMm($('inH')?.value),
+    thickness: parseFloat($('inThick')?.value) || 1,
+    edge: parseFloat($('inEdge')?.value) || 0,
+    kerf: parseFloat($('inKerf')?.value) || 0,
+    gap: parseFloat($('inGap')?.value) || 0,
+    rotMode: parseInt($('inRot')?.value, 10) || 1,
+    maxSheets: Math.max(1, parseInt($('inMaxSheets')?.value, 10) || 5),
+    remnantOn: !!$('inRemnantOn')?.checked,
+    remnantMin: Math.max(20, parseFloat($('inRemnantMin')?.value) || 300),
     snapThreshold: Math.max(0, Math.min(50, parseFloat($('inSnapThreshold')?.value) || 10)),
     gridStep: Math.max(1, Math.min(100, parseFloat($('inGridStep')?.value) || 10)),
     gridShow: !!$('inGridShow')?.checked,
-    strategy: $('inStrategy').value || 'area',
+    strategy: $('inStrategy')?.value || 'all',
     sheetPolygons: profile?.params?.sheetPolygons || null,
-    gaPop: Math.max(4, Math.min(64, parseInt($('gaPop')?.value, 10) || 16)),
-    gaGen: Math.max(5, Math.min(100, parseInt($('gaGen')?.value, 10) || 25)),
-    gaMut: Math.max(1, Math.min(60, parseFloat($('gaMut')?.value) || 20)),
-    afMode: $('afMode').value || 'fixX',
-    afCriterion: $('afCriterion').value || 'area',
-    afXFrom: parseFloat($('afXFrom').value) || 1,
-    afXTo: parseFloat($('afXTo').value) || 1,
-    afXStep: Math.max(1, parseFloat($('afXStep').value) || 1),
-    afYFrom: parseFloat($('afYFrom').value) || 1,
-    afYTo: parseFloat($('afYTo').value) || 1,
-    afYStep: Math.max(1, parseFloat($('afYStep').value) || 1)
+    afMode: $('afMode')?.value || 'fixX',
+    afCriterion: $('afCriterion')?.value || 'area',
+    afXFrom: parseFloat($('afXFrom')?.value) || 1,
+    afXTo: parseFloat($('afXTo')?.value) || 1,
+    afXStep: Math.max(1, parseFloat($('afXStep')?.value) || 1),
+    afYFrom: parseFloat($('afYFrom')?.value) || 1,
+    afYTo: parseFloat($('afYTo')?.value) || 1,
+    afYStep: Math.max(1, parseFloat($('afYStep')?.value) || 1)
   };
 }
 
 export function updateSumGap(){
   try {
     const p = readParams();
-    $('sumGap').textContent = (p.kerf + p.gap).toFixed(2);
+    const el = $('sumGap'); if(el) el.textContent = (p.kerf + p.gap).toFixed(2);
   } catch(_){}
 }
 
@@ -93,31 +90,37 @@ export function updateStockDxfUI(){
 
 export function applyParams(p){
   if(!p) return;
-  if(isFinite(p.sheetW)) $('inW').value = String(toMm(p.sheetW));
-  if(isFinite(p.sheetH)) $('inH').value = String(toMm(p.sheetH));
-  if(isFinite(p.thickness)) $('inThick').value = p.thickness;
-  if(isFinite(p.edge)) $('inEdge').value = p.edge;
-  if(isFinite(p.kerf)) $('inKerf').value = p.kerf;
-  if(isFinite(p.gap)) $('inGap').value = p.gap;
-  if(p.rotMode) $('inRot').value = p.rotMode;
-  if(isFinite(p.maxSheets)) $('inMaxSheets').value = p.maxSheets;
-  if(typeof p.remnantOn === 'boolean') $('inRemnantOn').checked = p.remnantOn;
-  if(isFinite(p.remnantMin)) $('inRemnantMin').value = p.remnantMin;
-  if(isFinite(p.snapThreshold)) $('inSnapThreshold').value = p.snapThreshold;
-  if(isFinite(p.gridStep)) $('inGridStep').value = p.gridStep;
-  if(typeof p.gridShow === 'boolean') $('inGridShow').checked = p.gridShow;
-  if(p.strategy) $('inStrategy').value = p.strategy;
-  if(isFinite(p.gaPop)) $('gaPop').value = p.gaPop;
-  if(isFinite(p.gaGen)) $('gaGen').value = p.gaGen;
-  if(isFinite(p.gaMut)) $('gaMut').value = p.gaMut;
-  if(p.afMode) $('afMode').value = p.afMode;
-  if(p.afCriterion) $('afCriterion').value = p.afCriterion;
-  if(isFinite(p.afXFrom)) $('afXFrom').value = p.afXFrom;
-  if(isFinite(p.afXTo)) $('afXTo').value = p.afXTo;
-  if(isFinite(p.afXStep)) $('afXStep').value = p.afXStep;
-  if(isFinite(p.afYFrom)) $('afYFrom').value = p.afYFrom;
-  if(isFinite(p.afYTo)) $('afYTo').value = p.afYTo;
-  if(isFinite(p.afYStep)) $('afYStep').value = p.afYStep;
+  if(isFinite(p.sheetW) && $('inW')) $('inW').value = String(toMm(p.sheetW));
+  if(isFinite(p.sheetH) && $('inH')) $('inH').value = String(toMm(p.sheetH));
+  if(isFinite(p.thickness) && $('inThick')) $('inThick').value = p.thickness;
+  if(isFinite(p.edge) && $('inEdge')) $('inEdge').value = p.edge;
+  if(isFinite(p.kerf) && $('inKerf')) $('inKerf').value = p.kerf;
+  if(isFinite(p.gap) && $('inGap')) $('inGap').value = p.gap;
+  if(p.rotMode && $('inRot')) $('inRot').value = p.rotMode;
+  if(isFinite(p.maxSheets) && $('inMaxSheets')) $('inMaxSheets').value = p.maxSheets;
+  if(typeof p.remnantOn === 'boolean' && $('inRemnantOn')) $('inRemnantOn').checked = p.remnantOn;
+  if(isFinite(p.remnantMin) && $('inRemnantMin')) $('inRemnantMin').value = p.remnantMin;
+  if(isFinite(p.snapThreshold) && $('inSnapThreshold')) $('inSnapThreshold').value = p.snapThreshold;
+  if(isFinite(p.gridStep) && $('inGridStep')) $('inGridStep').value = p.gridStep;
+  if(typeof p.gridShow === 'boolean' && $('inGridShow')) $('inGridShow').checked = p.gridShow;
+  if(p.strategy){
+    let s = p.strategy;
+    if (s === 'maxDim') s = 'width';
+    if (s === 'genetic') s = 'all';
+    const sel = $('inStrategy');
+    if (sel){
+      const exists = [...sel.options].some(o => o.value === s);
+      sel.value = exists ? s : 'all';
+    }
+  }
+  if(p.afMode && $('afMode')) $('afMode').value = p.afMode;
+  if(p.afCriterion && $('afCriterion')) $('afCriterion').value = p.afCriterion;
+  if(isFinite(p.afXFrom) && $('afXFrom')) $('afXFrom').value = p.afXFrom;
+  if(isFinite(p.afXTo) && $('afXTo')) $('afXTo').value = p.afXTo;
+  if(isFinite(p.afXStep) && $('afXStep')) $('afXStep').value = p.afXStep;
+  if(isFinite(p.afYFrom) && $('afYFrom')) $('afYFrom').value = p.afYFrom;
+  if(isFinite(p.afYTo) && $('afYTo')) $('afYTo').value = p.afYTo;
+  if(isFinite(p.afYStep) && $('afYStep')) $('afYStep').value = p.afYStep;
 
   const inW = $('inW'), inH = $('inH');
   if(inW) inW.value = String(toMm(inW.value));
@@ -126,7 +129,6 @@ export function applyParams(p){
   updateSumGap();
   updateAutofitCount();
   updateAutofitModeUI();
-  updateGaParamsUI();
   try { updateStockDxfUI(); } catch(_){}
   try { updateStockMiniInfo(); } catch(_){}
 }
@@ -157,6 +159,8 @@ export function loadProfiles(){
         r.map(pt => [roundCoord(pt[0]), roundCoord(pt[1])])
       );
     }
+    if (pr.strategy === 'maxDim') pr.strategy = 'width';
+    if (pr.strategy === 'genetic') pr.strategy = 'all';
     if(!p.nameCustom) p.name = autoProfileName(pr);
   }
 
@@ -165,6 +169,7 @@ export function loadProfiles(){
     profilesStore.activeId = profilesStore.profiles[0].id;
   }
 }
+
 export function saveProfiles(){
   try {
     localStorage.setItem(PROFILES_KEY, JSON.stringify(profilesStore.profiles));
@@ -220,39 +225,32 @@ export function updateAutofitCount(){
     if(n > AUTOFIT_MAX_STEPS){
       el.className = 'af-count warn';
       el.textContent = `⚠ Вариантов: ${n} — превышает лимит ${AUTOFIT_MAX_STEPS}.`;
-      $('btnAutoFit').disabled = true;
+      const b = $('btnAutoFit'); if(b) b.disabled = true;
     } else {
       el.className = 'af-count ok';
       el.textContent = `Вариантов: ${n} (X: ${xs.length}, Y: ${ys.length})`;
-      $('btnAutoFit').disabled = false;
+      const b = $('btnAutoFit'); if(b) b.disabled = false;
     }
   } catch(_){}
 }
 export function updateAutofitModeUI(){
-  const mode = $('afMode').value;
-  $('afXDim').style.opacity = (mode==='fixX') ? '0.45' : '1';
-  $('afYDim').style.opacity = (mode==='fixY') ? '0.45' : '1';
-  $('afXFrom').disabled = mode==='fixX';
-  $('afXTo').disabled   = mode==='fixX';
-  $('afXStep').disabled = mode==='fixX';
-  $('afYFrom').disabled = mode==='fixY';
-  $('afYTo').disabled   = mode==='fixY';
-  $('afYStep').disabled = mode==='fixY';
+  const mode = $('afMode')?.value;
+  if(!mode) return;
+  const ax = $('afXDim'), ay = $('afYDim');
+  if(ax) ax.style.opacity = (mode==='fixX') ? '0.45' : '1';
+  if(ay) ay.style.opacity = (mode==='fixY') ? '0.45' : '1';
+  const f1 = $('afXFrom'), f2 = $('afXTo'), f3 = $('afXStep');
+  const g1 = $('afYFrom'), g2 = $('afYTo'), g3 = $('afYStep');
+  if(f1) f1.disabled = mode==='fixX';
+  if(f2) f2.disabled = mode==='fixX';
+  if(f3) f3.disabled = mode==='fixX';
+  if(g1) g1.disabled = mode==='fixY';
+  if(g2) g2.disabled = mode==='fixY';
+  if(g3) g3.disabled = mode==='fixY';
 }
 
-export function updateGaParamsUI(){
-  const strategy = $('inStrategy')?.value;
-  const box = $('gaParams');
-  if(!box) return;
-  const on = strategy === 'genetic';
-  box.style.display = on ? '' : 'none';
-  if(!on) return;
-  const pop = Math.max(4, Math.min(64, parseInt($('gaPop').value, 10) || 16));
-  const gen = Math.max(5, Math.min(100, parseInt($('gaGen').value, 10) || 25));
-  const n = pop * gen;
-  const el = $('gaEstimate');
-  if(el) el.textContent = `Всего укладок: ${n} (${pop} × ${gen}). Примерное время: ${(n*0.05).toFixed(0)}–${(n*0.35).toFixed(0)} с.`;
-}
+// Оставлено для обратной совместимости — генетика удалена.
+export function updateGaParamsUI(){ /* no-op */ }
 
 export function makeBaseName(){
   const p = readParams();
@@ -263,14 +261,15 @@ export function makeBaseName(){
 }
 
 export function bindProfileUI(){
-  $('profileSelect').addEventListener('change', e => {
+  $('profileSelect')?.addEventListener('change', e => {
     profilesStore.activeId = e.target.value;
     const p = getActiveProfile(); if(p) applyParams(p.params);
     saveProfiles();
     try { updateStockDxfUI(); } catch(_){}
     import('./canvas.js').then(m => m.draw()).catch(() => {});
   });
-  $('btnNewProfile').addEventListener('click', () => {
+
+  $('btnNewProfile')?.addEventListener('click', () => {
     const cur = readParams();
     const name = prompt('Название новой заготовки:', autoProfileName(cur));
     if(name === null) return;
@@ -281,13 +280,13 @@ export function bindProfileUI(){
     renderProfileSelect(); saveProfiles();
     try { updateStockDxfUI(); } catch(_){}
   });
-  $('btnSaveProfile').addEventListener('click', () => {
+  $('btnSaveProfile')?.addEventListener('click', () => {
     const p = getActiveProfile(); if(!p) return;
     p.params = readParams();
     if(!p.nameCustom) p.name = autoProfileName(p.params);
     saveProfiles(); renderProfileSelect();
   });
-  $('btnRenameProfile').addEventListener('click', () => {
+  $('btnRenameProfile')?.addEventListener('click', () => {
     const p = getActiveProfile(); if(!p) return;
     const old = p.name;
     const v = prompt('Новое имя заготовки:', old);
@@ -300,7 +299,7 @@ export function bindProfileUI(){
     renderProfileSelect();
     pushHistory();
   });
-  $('btnDeleteProfile').addEventListener('click', () => {
+  $('btnDeleteProfile')?.addEventListener('click', () => {
     if(profilesStore.profiles.length <= 1){ alert('Нельзя удалить последний профиль'); return; }
     const p = getActiveProfile(); if(!p) return;
     if(!confirm('Удалить заготовку «' + p.name + '»?')) return;
@@ -312,7 +311,7 @@ export function bindProfileUI(){
   });
 
   const PARAM_FIELDS = ['inW','inH','inThick','inEdge','inKerf','inGap','inRot','inMaxSheets',
-    'inRemnantOn','inRemnantMin','inSnapThreshold','inGridStep','inGridShow','inStrategy','gaPop','gaGen','gaMut','afMode','afCriterion',
+    'inRemnantOn','inRemnantMin','inSnapThreshold','inGridStep','inGridShow','inStrategy','afMode','afCriterion',
     'afXFrom','afXTo','afXStep','afYFrom','afYTo','afYStep'];
   PARAM_FIELDS.forEach(id => {
     const el = $(id); if(!el) return;
@@ -321,7 +320,6 @@ export function bindProfileUI(){
       updateActiveProfileFromFields();
       if(id === 'afMode') updateAutofitModeUI();
       if(id === 'afMode' || id.startsWith('af')) updateAutofitCount();
-      if(id === 'inStrategy' || id.startsWith('ga')) updateGaParamsUI();
     };
     el.addEventListener('input', handler);
     el.addEventListener('change', handler);
@@ -360,6 +358,8 @@ export function bindProfileUI(){
       try {
         setStatus('Загрузка заготовки...');
         const text = await file.text();
+        window.stockDxfText = text;
+        window.stockDxfName = file.name;
         const parsed = parseDxfText(text, file.name);
         if(!parsed.polygons || !parsed.polygons.length){
           alert('В файле не найдено замкнутых контуров');
@@ -377,11 +377,7 @@ export function bindProfileUI(){
           r.map(([x, y]) => [roundCoord(x * sx), roundCoord(y * sy)])
         );
 
-        prof.params = { ...prof.params,
-          sheetPolygons: polys,
-          sheetW: W,
-          sheetH: H
-        };
+        prof.params = { ...prof.params, sheetPolygons: polys, sheetW: W, sheetH: H };
         saveProfiles();
         applyParams(prof.params);
         updateStockDxfUI();
@@ -401,6 +397,8 @@ export function bindProfileUI(){
       const prof = getActiveProfile();
       if(!prof) return;
       delete prof.params.sheetPolygons;
+      window.stockDxfText = null;
+      window.stockDxfName = null;
       saveProfiles();
       applyParams(prof.params);
       updateStockDxfUI();

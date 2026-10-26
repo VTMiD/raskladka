@@ -9,6 +9,50 @@ import { pushHistory } from './history.js';
 import { setStatus } from './utils.js';
 import { polysCollide, isPartInsideSheetPolygon } from './geometry.js';
 
+function _findFreeSpotForCopy(sheet, orig, W, H, buffer) {
+  const params = readParams();
+  const w = orig.bbox[2] - orig.bbox[0];
+  const h = orig.bbox[3] - orig.bbox[1];
+
+  const offsets = [
+    [w + buffer, 0], [-(w + buffer), 0],
+    [0, h + buffer], [0, -(h + buffer)],
+  ];
+  for (let dy = -3; dy <= 3; dy++) {
+    for (let dx = -3; dx <= 3; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      offsets.push([dx * (w + buffer), dy * (h + buffer)]);
+    }
+  }
+
+  const newPolygons = orig.polygons.map(r => r.map(([px, py]) => [px, py]));
+
+  for (const [dx, dy] of offsets) {
+    const nx = orig.x + dx;
+    const ny = orig.y + dy;
+    if (nx < -1e-3 || ny < -1e-3) continue;
+    if (nx + w > W + 1e-3 || ny + h > H + 1e-3) continue;
+
+    if (params.sheetPolygons && params.sheetPolygons.length) {
+      const absPolys = newPolygons.map(r =>
+        r.map(([px, py]) => [px + nx + params.edge, py + ny + params.edge]));
+      if (!isPartInsideSheetPolygon(absPolys, params.sheetPolygons, params.edge)) continue;
+    }
+
+    const absA = newPolygons.map(r => r.map(([px, py]) => [px + nx, py + ny]));
+    let collides = false;
+    for (const other of sheet.placed) {
+      const absB = other.polygons.map(r =>
+        r.map(([px, py]) => [px + other.x, py + other.y]));
+      if (polysCollide(absA, absB, buffer)) { collides = true; break; }
+    }
+    if (collides) continue;
+
+    return { x: nx, y: ny, w, h };
+  }
+  return null;
+}
+
 export function removePlacedPart(sheetIdx, placedIdx){
   const sheet = state.sheets[sheetIdx];
   if(!sheet || !sheet.placed[placedIdx]) return false;
@@ -46,62 +90,309 @@ export function duplicatePlacedPart(sheetIdx, placedIdx){
   const W = params.sheetW - 2*params.edge;
   const H = params.sheetH - 2*params.edge;
   const buffer = params.kerf + params.gap;
-  const w = orig.bbox[2] - orig.bbox[0];
-  const h = orig.bbox[3] - orig.bbox[1];
 
-  const offsets = [
-    [w + buffer, 0], [-(w + buffer), 0],
-    [0, h + buffer], [0, -(h + buffer)],
-  ];
-  for(let dy = -3; dy <= 3; dy++){
-    for(let dx = -3; dx <= 3; dx++){
-      if(dx === 0 && dy === 0) continue;
-      offsets.push([dx * (w + buffer), dy * (h + buffer)]);
-    }
+  const spot = _findFreeSpotForCopy(sheet, orig, W, H, buffer);
+  if(!spot){
+    setStatus('Не удалось найти свободное место рядом для копии');
+    return false;
   }
 
-  const newPolygons = orig.polygons.map(r => r.map(([px, py]) => [px, py]));
+  const newPlaced = {
+    partIdx: orig.partIdx,
+    polygons: orig.polygons.map(r => r.map(([px, py]) => [px, py])),
+    x: spot.x, y: spot.y,
+    bbox: [spot.x, spot.y, spot.x + spot.w, spot.y + spot.h],
+    _manual: true,
+    _fixed: false,
+  };
+  sheet.placed.push(newPlaced);
+  state.selectedPart = { sheetIdx, placedIdx: sheet.placed.length - 1 };
+  setStatus(`Деталь «${state.parts[orig.partIdx]?.name || ''}» дублирована`);
+  draw();
+  updateReport();
+  refreshPartsStatus();
+  pushHistory();
+  return true;
+}
 
-  for(const [dx, dy] of offsets){
-    const nx = orig.x + dx;
-    const ny = orig.y + dy;
-    if(nx < -1e-3 || ny < -1e-3) continue;
-    if(nx + w > W + 1e-3 || ny + h > H + 1e-3) continue;
+export function duplicateSelection(){
+  let sel = [];
+  if(state.selectedParts && state.selectedParts.length){
+    sel = state.selectedParts.map(sp => ({ sheetIdx: sp.sheetIdx, placedIdx: sp.placedIdx }));
+  } else if(state.selectedPart){
+    sel = [{ sheetIdx: state.selectedPart.sheetIdx, placedIdx: state.selectedPart.placedIdx }];
+  }
+  if(!sel.length) return 0;
 
-    if(params.sheetPolygons && params.sheetPolygons.length){
-      const absPolys = newPolygons.map(r => r.map(([px,py]) => [px + nx + params.edge, py + ny + params.edge]));
-      if(!isPartInsideSheetPolygon(absPolys, params.sheetPolygons, params.edge)) continue;
-    }
+  const params = readParams();
+  const W = params.sheetW - 2*params.edge;
+  const H = params.sheetH - 2*params.edge;
+  const buffer = params.kerf + params.gap;
 
-    const absA = newPolygons.map(r => r.map(([px, py]) => [px + nx, py + ny]));
-    let collides = false;
-    for(const other of sheet.placed){
-      const absB = other.polygons.map(r => r.map(([px, py]) => [px + other.x, py + other.y]));
-      if(polysCollide(absA, absB, buffer)){ collides = true; break; }
-    }
-    if(collides) continue;
+  const newSel = [];
+  for(const sp of sel){
+    const sheet = state.sheets[sp.sheetIdx];
+    if(!sheet) continue;
+    const orig = sheet.placed[sp.placedIdx];
+    if(!orig) continue;
+
+    const spot = _findFreeSpotForCopy(sheet, orig, W, H, buffer);
+    if(!spot) continue;
 
     const newPlaced = {
       partIdx: orig.partIdx,
-      polygons: newPolygons,
-      x: nx, y: ny,
-      bbox: [nx, ny, nx + w, ny + h],
+      polygons: orig.polygons.map(r => r.map(([px, py]) => [px, py])),
+      x: spot.x, y: spot.y,
+      bbox: [spot.x, spot.y, spot.x + spot.w, spot.y + spot.h],
       _manual: true,
       _fixed: false,
     };
     sheet.placed.push(newPlaced);
-    state.selectedPart = { sheetIdx, placedIdx: sheet.placed.length - 1 };
-    setStatus(`Деталь «${state.parts[orig.partIdx]?.name || ''}» дублирована`);
+    newSel.push({ sheetIdx: sp.sheetIdx, placedIdx: sheet.placed.length - 1 });
+  }
+
+  if(newSel.length > 0){
+    state.selectedPart = newSel[0];
+    state.selectedParts = newSel.length > 1 ? newSel : [];
     draw();
     updateReport();
     refreshPartsStatus();
     pushHistory();
-    return true;
+  }
+  return newSel.length;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ДУБЛИРОВАНИЕ ПЕРЕТАСКИВАНИЕМ — ГРУППОВОЙ GHOST
+// ═══════════════════════════════════════════════════════════════
+
+// sel может быть одиночным {sheetIdx, placedIdx} или массивом таких.
+// Создаёт ghost-группу из ВСЕХ деталей выделения (только с первого листа).
+export function startDuplicateDragFromSelection(sel){
+  let arr = Array.isArray(sel) ? sel.slice() : (sel ? [sel] : []);
+  arr = arr.filter(sp => sp && Number.isFinite(sp.sheetIdx) && Number.isFinite(sp.placedIdx));
+  if(!arr.length) return false;
+
+  const firstSheetIdx = arr[0].sheetIdx;
+  arr = arr.filter(sp => sp.sheetIdx === firstSheetIdx);
+  if(!arr.length) return false;
+
+  const sheet = state.sheets[firstSheetIdx];
+  if(!sheet) return false;
+
+  // Убираем дубли в индексах (на всякий случай)
+  const seen = new Set();
+  const uniq = [];
+  for(const sp of arr){
+    if(seen.has(sp.placedIdx)) continue;
+    seen.add(sp.placedIdx);
+    uniq.push(sp);
   }
 
-  setStatus('Не удалось найти свободное место рядом для копии');
-  return false;
+  const items = [];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for(const sp of uniq){
+    const pl = sheet.placed[sp.placedIdx];
+    if(!pl) continue;
+    const w = pl.bbox[2] - pl.bbox[0];
+    const h = pl.bbox[3] - pl.bbox[1];
+    items.push({
+      partIdx: pl.partIdx,
+      polygons: pl.polygons.map(r => r.map(([px, py]) => [px, py])),
+      w, h,
+      x: pl.x, y: pl.y,
+      origX: pl.x, origY: pl.y,
+      collides: false,
+    });
+    if(pl.x < minX) minX = pl.x;
+    if(pl.y < minY) minY = pl.y;
+    if(pl.x + w > maxX) maxX = pl.x + w;
+    if(pl.y + h > maxY) maxY = pl.y + h;
+  }
+  if(!items.length) return false;
+
+  state.duplicateSource = {
+    sheetIdx: firstSheetIdx,
+    indices: uniq.map(sp => sp.placedIdx),
+  };
+  state.duplicateGhost = {
+    items,
+    startX: null, startY: null,
+    bbox: [minX, minY, maxX, maxY],
+    collides: false,
+    valid: true,
+    _attached: false,
+    _dragging: false,
+  };
+  return true;
 }
+
+// Обёртка для клика по конкретной детали (когда ghost ещё нет)
+export function startDuplicateDrag(worldXY, hit){
+  if(!hit) return false;
+  return startDuplicateDragFromSelection({ sheetIdx: hit.sheetIdx, placedIdx: hit.placedIdx });
+}
+
+export function updateDuplicateGhost(worldXY){
+  const g = state.duplicateGhost;
+  if(!g || !g.items || !g.items.length) return;
+
+  const params = readParams();
+  const W = params.sheetW - 2*params.edge;
+  const H = params.sheetH - 2*params.edge;
+  const buffer = params.kerf + params.gap;
+
+  // При первом mousemove — «привязываем» центр bbox группы к курсору
+  if(g.startX == null){
+    const bw = g.bbox[2] - g.bbox[0];
+    const bh = g.bbox[3] - g.bbox[1];
+    const bcx = g.bbox[0] + bw / 2;
+    const bcy = g.bbox[1] + bh / 2;
+    const dx = worldXY.x - bcx;
+    const dy = worldXY.y - bcy;
+    for(const it of g.items){
+      it.origX = it.x + dx;
+      it.origY = it.y + dy;
+    }
+    g.startX = worldXY.x;
+    g.startY = worldXY.y;
+
+    let nMinX = Infinity, nMinY = Infinity, nMaxX = -Infinity, nMaxY = -Infinity;
+    for(const it of g.items){
+      if(it.origX < nMinX) nMinX = it.origX;
+      if(it.origY < nMinY) nMinY = it.origY;
+      if(it.origX + it.w > nMaxX) nMaxX = it.origX + it.w;
+      if(it.origY + it.h > nMaxY) nMaxY = it.origY + it.h;
+    }
+    g.bbox = [nMinX, nMinY, nMaxX, nMaxY];
+  }
+
+  let dx = worldXY.x - g.startX;
+  let dy = worldXY.y - g.startY;
+
+  if(state.gridSnapMode){
+    const step = Math.max(1, params.gridStep || 10);
+    dx = Math.round(dx / step) * step;
+    dy = Math.round(dy / step) * step;
+  }
+
+  // Ограничение по границам листа (по bbox группы)
+  const bw = g.bbox[2] - g.bbox[0];
+  const bh = g.bbox[3] - g.bbox[1];
+  let groupX = g.bbox[0] + dx;
+  let groupY = g.bbox[1] + dy;
+  if(groupX < 0) dx -= groupX;
+  if(groupY < 0) dy -= groupY;
+  if(groupX + bw > W) dx -= (groupX + bw - W);
+  if(groupY + bh > H) dy -= (groupY + bh - H);
+
+  for(const it of g.items){
+    it.x = it.origX + dx;
+    it.y = it.origY + dy;
+    it.collides = false;
+  }
+
+  // Проверка коллизий
+  const sheet = state.sheets[state.duplicateSource.sheetIdx];
+  const sourceSet = new Set(state.duplicateSource.indices || []);
+  let anyCollides = false;
+
+  if(sheet){
+    for(let i = 0; i < g.items.length; i++){
+      const it = g.items[i];
+      const absA = it.polygons.map(r => r.map(([px, py]) => [px + it.x, py + it.y]));
+
+      // против прочих деталей листа (исключая все источники)
+      for(let si = 0; si < sheet.placed.length; si++){
+        if(sourceSet.has(si)) continue;
+        const other = sheet.placed[si];
+        const absB = other.polygons.map(r => r.map(([px, py]) => [px + other.x, py + other.y]));
+        if(polysCollide(absA, absB, buffer)){ it.collides = true; anyCollides = true; break; }
+      }
+      if(it.collides) continue;
+
+      // против других ghost'ов группы
+      for(let j = 0; j < g.items.length; j++){
+        if(i === j) continue;
+        const other = g.items[j];
+        const absB = other.polygons.map(r => r.map(([px, py]) => [px + other.x, py + other.y]));
+        if(polysCollide(absA, absB, buffer)){ it.collides = true; anyCollides = true; break; }
+      }
+
+      // внутри контура заготовки
+      if(!it.collides && params.sheetPolygons && params.sheetPolygons.length){
+        const absPolys = it.polygons.map(r => r.map(([px, py]) => [px + it.x + params.edge, py + it.y + params.edge]));
+        if(!isPartInsideSheetPolygon(absPolys, params.sheetPolygons, params.edge)){
+          it.collides = true; anyCollides = true;
+        }
+      }
+    }
+  }
+
+  g.collides = anyCollides;
+  g.valid = !anyCollides;
+
+  let nMinX = Infinity, nMinY = Infinity, nMaxX = -Infinity, nMaxY = -Infinity;
+  for(const it of g.items){
+    if(it.x < nMinX) nMinX = it.x;
+    if(it.y < nMinY) nMinY = it.y;
+    if(it.x + it.w > nMaxX) nMaxX = it.x + it.w;
+    if(it.y + it.h > nMaxY) nMaxY = it.y + it.h;
+  }
+  g.bbox = [nMinX, nMinY, nMaxX, nMaxY];
+}
+
+export function commitDuplicateGhost(){
+  const g = state.duplicateGhost;
+  const src = state.duplicateSource;
+  if(!g || !src || !g.items || !g.items.length) return false;
+
+  const sheet = state.sheets[src.sheetIdx];
+  if(!sheet){ cancelDuplicateDrag(); return false; }
+
+  if(g.collides){
+    setStatus('Наложение — копии не созданы. Перетащите в свободное место.');
+    return false;
+  }
+
+  const newSel = [];
+  for(const it of g.items){
+    const newPlaced = {
+      partIdx: it.partIdx,
+      polygons: it.polygons.map(r => r.map(([px, py]) => [px, py])),
+      x: it.x, y: it.y,
+      bbox: [it.x, it.y, it.x + it.w, it.y + it.h],
+      _manual: true,
+      _fixed: false,
+      _fromDuplicate: true,
+    };
+    sheet.placed.push(newPlaced);
+    newSel.push({ sheetIdx: src.sheetIdx, placedIdx: sheet.placed.length - 1 });
+  }
+
+  state.selectedParts = newSel.length > 1 ? newSel : [];
+  state.selectedPart = newSel[0];
+
+  state.duplicateGhost = null;
+  state.duplicateSource = null;
+
+  draw();
+  updateReport();
+  refreshPartsStatus();
+  pushHistory();
+  setStatus(`Создано копий: ${g.items.length}. Esc — выход.`);
+  return true;
+}
+
+export function cancelDuplicateDrag(){
+  state.duplicateGhost = null;
+  state.duplicateSource = null;
+  draw();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Поворот / зеркало / фиксация — одиночная деталь
+// ═══════════════════════════════════════════════════════════════
 
 export function rotateSelected(direction){
   if(!state.selectedPart) return false;

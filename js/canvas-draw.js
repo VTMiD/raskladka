@@ -118,7 +118,7 @@ export function draw(){
 
   const sheetsToDraw = state.sheets.length ? state.sheets : [null];
 
-  // ─── Сетка (постоянная или Alt-режим) ───
+  // ─── Сетка ───
   {
     const showPersist = !!params.gridShow;
     const showAlt = !!(state.gridSnapMode && (state.drag || state.groupDrag));
@@ -225,7 +225,6 @@ export function draw(){
       }
     }
 
-    // ─── Резы листа (оранжевые пунктирные линии) ───
     if (sheet.cuts && sheet.cuts.length) {
       ctx.save();
       ctx.strokeStyle = 'rgba(255, 100, 0, 0.95)';
@@ -379,6 +378,59 @@ export function draw(){
 
   ctx.restore();
 
+  // ─── Призрак(и) копий при дублировании — поверх всего ───
+  if(state.duplicateGhost && state.duplicateSource && state.duplicateSource.sheetIdx < state.sheets.length){
+    const g = state.duplicateGhost;
+    const src = state.duplicateSource;
+    const sx = src.sheetIdx * (SW + gapBetween);
+
+    ctx.save();
+
+    if(g.items && g.items.length){
+      for(const it of g.items){
+        const itemCollides = g.collides || it.collides;
+        ctx.fillStyle = itemCollides ? 'rgba(255, 60, 60, 0.20)' : 'rgba(0, 150, 255, 0.15)';
+        ctx.strokeStyle = itemCollides ? 'rgba(200, 0, 0, 0.90)' : 'rgba(0, 120, 220, 0.85)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash(itemCollides ? [6, 4] : [10, 5]);
+        for(const ring of it.polygons){
+          if(ring.length < 2) continue;
+          ctx.beginPath();
+          ctx.moveTo(toPxX(sx + params.edge + it.x + ring[0][0]), toPxY(params.edge + it.y + ring[0][1]));
+          for(let i = 1; i < ring.length; i++)
+            ctx.lineTo(toPxX(sx + params.edge + it.x + ring[i][0]), toPxY(params.edge + it.y + ring[i][1]));
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+      }
+
+      // Общий лейбл по центру bbox группы
+      if(g.bbox){
+        const cx = toPxX(sx + params.edge + (g.bbox[0] + g.bbox[2]) / 2);
+        const cy = toPxY(params.edge + g.bbox[1]) - 6;
+        const n = g.items.length;
+        const label = g.collides
+          ? 'НАЛОЖЕНИЕ'
+          : (n > 1 ? `КОПИЯ ×${n}` : 'КОПИЯ');
+        ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+        ctx.fillRect(cx - tw/2 - 6, cy - 16, tw + 12, 18);
+        ctx.strokeStyle = g.collides ? '#c00' : '#0066cc';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cx - tw/2 - 6, cy - 16, tw + 12, 18);
+        ctx.fillStyle = g.collides ? '#c00' : '#0066cc';
+        ctx.fillText(label, cx, cy);
+      }
+    }
+
+    ctx.restore();
+  }
+
   if(!isPreview){
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -451,7 +503,6 @@ export function draw(){
     ctx.restore();
   }
 
-  // ─── Предпросмотр реза ───
   if (state.cutMode && state.cutPoints.length > 0) {
     const p = state.cutPoints[0];
     const si = p.sheetIdx;
@@ -499,7 +550,6 @@ export function draw(){
 
   drawMeasurements();
 
-  // ─── UI резов ───
   {
     const totalCuts = state.sheets.reduce((s, sh) => s + ((sh.cuts && sh.cuts.length) || 0), 0);
     const info = document.getElementById('cutInfo');
