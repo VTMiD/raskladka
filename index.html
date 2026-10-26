@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <title>Раскладка DXF для плазмореза</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="theme-color" content="#0d1220">
 </head>
 <body>
 <div id="app">
@@ -11,6 +13,9 @@
   <h1>Раскладка DXF</h1>
   <button id="btnNest" class="primary">▶ Разложить</button>
   <button id="btnOpenAutofit">🎯 Подбор заготовки</button>
+  <button id="btnSaveProject" title="Сохранить весь проект в один файл (.dxfnest.json)">💾 Сохранить проект</button>
+  <button id="btnLoadProject" title="Открыть проект из файла (.dxfnest.json)">📂 Открыть проект</button>
+  <input type="file" id="projectFileInput" accept=".json,.dxfnest,application/json" hidden>
   <button id="btnExport">Экспорт DXF (всё)</button>
   <button id="btnExportSplit">Экспорт DXF (по листам)</button>
   <button id="btnPrintReport">🖨 Печать отчёта</button>
@@ -28,10 +33,6 @@
     <button id="btnNestRemnant" title="Переразложить остальные вокруг зафиксированных">▶ На остатке</button>
     <span id="fixCount" class="fix-count">📌 Зафиксировано: 0</span>
     <div id="status"></div>
-    <div class="history-group">
-      <button id="btnUndo" title="Отменить (Ctrl+Z)" disabled>↶ Отменить</button>
-      <button id="btnRedo" title="Вернуть (Ctrl+Y)" disabled>↷ Вернуть</button>
-    </div>
     <div class="tools-group">
       <button id="btnCut" type="button" title="Резать лист по прямым (клик → клик). Shift — орто, Ctrl — без привязки.">✂ Резать лист</button>
       <button id="btnCutRemoveLast" type="button" title="Удалить последний рез" disabled>↶</button>
@@ -90,25 +91,15 @@
 <option value="2">только 90°</option>
 <option value="1">без поворота</option>
 </select></div>
-<div class="row"><label>Стратегия расчёта</label>
+<div class="row"><label>Стратегия расчёта
+<button type="button" class="help-btn" data-help="Авто — перебор 3-х стратегий (по площади, по длине X, по ширине Y) в двух порядках укладки (построчно и постолбцово), выбирается лучший результат. По площади — быстрый проход (2 варианта укладки, берётся лучший). По длине X — длинная сторона детали вдоль X. По ширине Y — длинная сторона вдоль Y.">?</button>
+</label>
 <select id="inStrategy" class="wide">
-<option value="area" selected>По площади (быстро)</option>
-<option value="maxDim">По длине</option>
-<option value="height">По высоте</option>
-<option value="width">По ширине</option>
-<option value="all">Все 4 (медленнее, лучше)</option>
-<option value="genetic">🧬 Генетика — плотно к углу (долго)</option>
+<option value="all" selected>Авто — лучший результат (медленнее)</option>
+<option value="area">По площади (быстро)</option>
+<option value="width">По длине листа (X)</option>
+<option value="height">По ширине листа (Y)</option>
 </select></div>
-<div class="ga-params" id="gaParams" style="display:none">
-  <div class="ga-title">🧬 Параметры генетики</div>
-  <div class="row"><label>Популяция</label>
-    <input id="gaPop" type="number" value="16" min="4" max="64" step="2"></div>
-  <div class="row"><label>Поколений</label>
-    <input id="gaGen" type="number" value="25" min="5" max="100" step="1"></div>
-  <div class="row"><label>Мутация, %</label>
-    <input id="gaMut" type="number" value="20" min="1" max="60" step="1"></div>
-  <div class="hint" id="gaEstimate" style="color:#5a2a8a">—</div>
-</div>
 <div class="hint">Итоговый зазор = kerf + gap = <span id="sumGap" class="sum">7</span> мм</div>
 <div class="limit-row">
 <div class="row" style="margin:0"><label>Макс. листов</label>
@@ -143,8 +134,12 @@
 <div class="empty">Файлы не добавлены. Перетащите DXF сюда.</div></div>
 <div class="batch-bar">
 <label>Кол-во выдел.:</label>
-<input id="batchQty" type="number" min="1" value="1">
-<button class="small" id="btnApplyQty">Применить</button>
+<input id="batchQty" type="number" min="1" value="1" title="Введите количество и нажмите Enter или «Применить»">
+<button class="small" id="btnApplyQty" title="Установить выделенным указанное количество (Enter)">Применить</button>
+<button class="small" id="btnQtyInc" title="Прибавить +1 к текущему количеству каждой выделенной">+1</button>
+<button class="small" id="btnQtyDec" title="Отнять −1 (мин. 1) от текущего количества">−1</button>
+<button class="small" id="btnQtyMul2" title="Умножить количество на 2">×2</button>
+<button class="small" id="btnQtyDiv2" title="Разделить количество на 2 (мин. 1)">÷2</button>
 <button class="small" id="btnDupSelected" title="Дублировать строки в таблице деталей">Дублировать</button>
 <button class="small danger" id="btnDelSelected">Удалить</button>
 <span class="sel-info" id="selInfo"></span></div>

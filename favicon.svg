@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="14" fill="#9fc8ee"/>
+  <text x="32" y="27" font-size="22" text-anchor="middle" dominant-baseline="middle"
+        font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, Twemoji Mozilla, sans-serif">🛠️</text>
+  <text x="32" y="48" font-size="22" text-anchor="middle" dominant-baseline="middle"
+        font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, Twemoji Mozilla, sans-serif">📐</text>
+</svg>
