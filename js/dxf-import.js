@@ -1,4 +1,5 @@
 import { polysBBox, polygonArea, polysLength, chainSegments } from './geometry.js';
+import { parseRemnantMeta } from './remnant-io.js';
 
 const M_IDENT = {a:1,b:0,c:0,d:1,e:0,f:0};
 const mApply = (m,x,y) => [m.a*x + m.c*y + m.e, m.b*x + m.d*y + m.f];
@@ -135,8 +136,6 @@ export function parseDxfText(text, name){
       let closed = !!(e.shape || e.closed);
       const n = v.length;
 
-      // Если флаг closed не выставлен, но первая и последняя вершины совпадают —
-      // считаем контур замкнутым. Иначе теряется последнее ребро (v[n-1] → v[0]).
       if(!closed && n >= 3){
         const f = v[0], l = v[n-1];
         const dx = f.x - l.x, dy = f.y - l.y;
@@ -214,16 +213,12 @@ export function parseDxfText(text, name){
   const entities = (dxf && dxf.entities) || [];
   for(const e of entities){ try { handleEntity(e, M_IDENT, 0); } catch(_){} }
 
-  // Сшиваем сегменты в кольца. 0.1 мм — рабочий допуск для большинства DXF.
   let allRings = [...closedRings, ...chainSegments(segments, 0.1)];
 
-  // Fallback: если контуры не замкнулись — пробуем с большим допуском.
   if(!allRings.length && segments.length){
     allRings = chainSegments(segments, 0.3);
   }
 
-  // Последний fallback: возвращаем открытые полилинии как псевдо-кольца,
-  // чтобы деталь не потерялась полностью.
   if(!allRings.length && segments.length){
     for(const s of segments) allRings.push([s.start, s.end]);
   }
@@ -238,11 +233,16 @@ export function parseDxfText(text, name){
   let outerArea=0;
   for(const r of norm){ const a=Math.abs(polygonArea(r)); if(a>outerArea) outerArea=a; }
   const length = polysLength(norm);
+
+  let meta = null;
+  try { meta = parseRemnantMeta(text); } catch(_){}
+
   return {
     name, polygons: norm,
     bbox: [0,0,bb[2]-bb[0], bb[3]-bb[1]],
     area: outerArea,
     width: bb[2]-bb[0], height: bb[3]-bb[1],
-    length
+    length,
+    meta,
   };
 }

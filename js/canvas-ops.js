@@ -53,6 +53,15 @@ function _findFreeSpotForCopy(sheet, orig, W, H, buffer) {
   return null;
 }
 
+function _clearSelectedRows(){
+  if(state.selectedRows && state.selectedRows.size){
+    state.selectedRows.clear();
+    setTimeout(() => {
+      import('./parts.js').then(m => m.updateSelectionUI()).catch(() => {});
+    }, 0);
+  }
+}
+
 export function removePlacedPart(sheetIdx, placedIdx){
   const sheet = state.sheets[sheetIdx];
   if(!sheet || !sheet.placed[placedIdx]) return false;
@@ -73,6 +82,8 @@ export function removePlacedPart(sheetIdx, placedIdx){
   }
 
   state.selectedPart = null;
+  _clearSelectedRows();
+
   draw();
   updateReport();
   refreshPartsStatus();
@@ -166,8 +177,6 @@ export function duplicateSelection(){
 // ДУБЛИРОВАНИЕ ПЕРЕТАСКИВАНИЕМ — ГРУППОВОЙ GHOST
 // ═══════════════════════════════════════════════════════════════
 
-// sel может быть одиночным {sheetIdx, placedIdx} или массивом таких.
-// Создаёт ghost-группу из ВСЕХ деталей выделения (только с первого листа).
 export function startDuplicateDragFromSelection(sel){
   let arr = Array.isArray(sel) ? sel.slice() : (sel ? [sel] : []);
   arr = arr.filter(sp => sp && Number.isFinite(sp.sheetIdx) && Number.isFinite(sp.placedIdx));
@@ -180,7 +189,6 @@ export function startDuplicateDragFromSelection(sel){
   const sheet = state.sheets[firstSheetIdx];
   if(!sheet) return false;
 
-  // Убираем дубли в индексах (на всякий случай)
   const seen = new Set();
   const uniq = [];
   for(const sp of arr){
@@ -227,7 +235,6 @@ export function startDuplicateDragFromSelection(sel){
   return true;
 }
 
-// Обёртка для клика по конкретной детали (когда ghost ещё нет)
 export function startDuplicateDrag(worldXY, hit){
   if(!hit) return false;
   return startDuplicateDragFromSelection({ sheetIdx: hit.sheetIdx, placedIdx: hit.placedIdx });
@@ -242,7 +249,6 @@ export function updateDuplicateGhost(worldXY){
   const H = params.sheetH - 2*params.edge;
   const buffer = params.kerf + params.gap;
 
-  // При первом mousemove — «привязываем» центр bbox группы к курсору
   if(g.startX == null){
     const bw = g.bbox[2] - g.bbox[0];
     const bh = g.bbox[3] - g.bbox[1];
@@ -276,7 +282,6 @@ export function updateDuplicateGhost(worldXY){
     dy = Math.round(dy / step) * step;
   }
 
-  // Ограничение по границам листа (по bbox группы)
   const bw = g.bbox[2] - g.bbox[0];
   const bh = g.bbox[3] - g.bbox[1];
   let groupX = g.bbox[0] + dx;
@@ -292,7 +297,6 @@ export function updateDuplicateGhost(worldXY){
     it.collides = false;
   }
 
-  // Проверка коллизий
   const sheet = state.sheets[state.duplicateSource.sheetIdx];
   const sourceSet = new Set(state.duplicateSource.indices || []);
   let anyCollides = false;
@@ -302,7 +306,6 @@ export function updateDuplicateGhost(worldXY){
       const it = g.items[i];
       const absA = it.polygons.map(r => r.map(([px, py]) => [px + it.x, py + it.y]));
 
-      // против прочих деталей листа (исключая все источники)
       for(let si = 0; si < sheet.placed.length; si++){
         if(sourceSet.has(si)) continue;
         const other = sheet.placed[si];
@@ -311,7 +314,6 @@ export function updateDuplicateGhost(worldXY){
       }
       if(it.collides) continue;
 
-      // против других ghost'ов группы
       for(let j = 0; j < g.items.length; j++){
         if(i === j) continue;
         const other = g.items[j];
@@ -319,7 +321,6 @@ export function updateDuplicateGhost(worldXY){
         if(polysCollide(absA, absB, buffer)){ it.collides = true; anyCollides = true; break; }
       }
 
-      // внутри контура заготовки
       if(!it.collides && params.sheetPolygons && params.sheetPolygons.length){
         const absPolys = it.polygons.map(r => r.map(([px, py]) => [px + it.x + params.edge, py + it.y + params.edge]));
         if(!isPartInsideSheetPolygon(absPolys, params.sheetPolygons, params.edge)){
@@ -776,6 +777,8 @@ export function deleteSelectedGroup(){
 
   state.selectedParts = [];
   state.selectedPart = null;
+  _clearSelectedRows();
+
   draw();
   updateReport();
   refreshPartsStatus();

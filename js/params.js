@@ -12,6 +12,30 @@ function roundCoord(v){
   return Math.round(Number(v) * 1000) / 1000;
 }
 
+function clearCutsAndRemnants(){
+  let cutCount = 0, remCount = 0;
+  if (Array.isArray(state.sheets) && state.sheets.length) {
+    for (const sh of state.sheets) {
+      if (Array.isArray(sh.cuts)) cutCount += sh.cuts.length;
+      if (Array.isArray(sh.remnants)) remCount += sh.remnants.length;
+      sh.cuts = [];
+      sh.remnants = [];
+    }
+  }
+
+  state.cutPoints = [];
+  state.cutPreview = null;
+  state.remnantPreview = null;
+
+  if (state.remnantMode) {
+    state.remnantMode = false;
+    const mr = document.getElementById('btnMarkRemnant');
+    if (mr) mr.classList.remove('active');
+  }
+
+  return { cutCount, remCount };
+}
+
 export function readParams(){
   const profile = getActiveProfile();
   return {
@@ -25,6 +49,7 @@ export function readParams(){
     maxSheets: Math.max(1, parseInt($('inMaxSheets')?.value, 10) || 5),
     remnantOn: !!$('inRemnantOn')?.checked,
     remnantMin: Math.max(20, parseFloat($('inRemnantMin')?.value) || 300),
+    remnantGridStep: Math.max(2, Math.min(50, parseFloat($('inRemnantGridStep')?.value) || 10)),
     snapThreshold: Math.max(0, Math.min(50, parseFloat($('inSnapThreshold')?.value) || 10)),
     gridStep: Math.max(1, Math.min(100, parseFloat($('inGridStep')?.value) || 10)),
     gridShow: !!$('inGridShow')?.checked,
@@ -100,6 +125,7 @@ export function applyParams(p){
   if(isFinite(p.maxSheets) && $('inMaxSheets')) $('inMaxSheets').value = p.maxSheets;
   if(typeof p.remnantOn === 'boolean' && $('inRemnantOn')) $('inRemnantOn').checked = p.remnantOn;
   if(isFinite(p.remnantMin) && $('inRemnantMin')) $('inRemnantMin').value = p.remnantMin;
+  if(isFinite(p.remnantGridStep) && $('inRemnantGridStep')) $('inRemnantGridStep').value = p.remnantGridStep;
   if(isFinite(p.snapThreshold) && $('inSnapThreshold')) $('inSnapThreshold').value = p.snapThreshold;
   if(isFinite(p.gridStep) && $('inGridStep')) $('inGridStep').value = p.gridStep;
   if(typeof p.gridShow === 'boolean' && $('inGridShow')) $('inGridShow').checked = p.gridShow;
@@ -249,7 +275,6 @@ export function updateAutofitModeUI(){
   if(g3) g3.disabled = mode==='fixY';
 }
 
-// Оставлено для обратной совместимости — генетика удалена.
 export function updateGaParamsUI(){ /* no-op */ }
 
 export function makeBaseName(){
@@ -311,8 +336,9 @@ export function bindProfileUI(){
   });
 
   const PARAM_FIELDS = ['inW','inH','inThick','inEdge','inKerf','inGap','inRot','inMaxSheets',
-    'inRemnantOn','inRemnantMin','inSnapThreshold','inGridStep','inGridShow','inStrategy','afMode','afCriterion',
+    'inRemnantOn','inRemnantMin','inRemnantGridStep','inSnapThreshold','inGridStep','inGridShow','inStrategy','afMode','afCriterion',
     'afXFrom','afXTo','afXStep','afYFrom','afYTo','afYStep'];
+
   PARAM_FIELDS.forEach(id => {
     const el = $(id); if(!el) return;
     const handler = () => {
@@ -320,6 +346,11 @@ export function bindProfileUI(){
       updateActiveProfileFromFields();
       if(id === 'afMode') updateAutofitModeUI();
       if(id === 'afMode' || id.startsWith('af')) updateAutofitCount();
+      // Живое обновление холста при изменении параметров заготовки
+      if(id === 'inW' || id === 'inH' || id === 'inThick' || id === 'inEdge' ||
+         id === 'inGridShow' || id === 'inGridStep'){
+        import('./canvas.js').then(m => m.draw()).catch(() => {});
+      }
     };
     el.addEventListener('input', handler);
     el.addEventListener('change', handler);
@@ -378,11 +409,33 @@ export function bindProfileUI(){
         );
 
         prof.params = { ...prof.params, sheetPolygons: polys, sheetW: W, sheetH: H };
+
+        if (parsed.meta && parsed.meta.kind === 'remnant') {
+          if (parsed.meta.name) {
+            prof.name = parsed.meta.name;
+            prof.nameCustom = true;
+          }
+          if (isFinite(parsed.meta.thickness)) {
+            prof.params.thickness = parsed.meta.thickness;
+            if ($('inThick')) $('inThick').value = parsed.meta.thickness;
+          }
+        }
+
         saveProfiles();
         applyParams(prof.params);
         updateStockDxfUI();
         updateStockMiniInfo();
-        setStatus(`Заготовка загружена: ${W} × ${H} мм`);
+        renderProfileSelect();
+
+        const { cutCount, remCount } = clearCutsAndRemnants();
+
+        const tag = (parsed.meta && parsed.meta.kind === 'remnant') ? ' (остаток)' : '';
+        let msg = `Заготовка загружена: ${W} × ${H} мм${tag}`;
+        if (cutCount || remCount) {
+          msg += ` · очищено: ${cutCount} рез., ${remCount} ост.`;
+        }
+        setStatus(msg);
+
         import('./canvas.js').then(m => m.draw()).catch(() => {});
         import('./report.js').then(m => m.updateReport()).catch(() => {});
       } catch(err){
@@ -403,7 +456,12 @@ export function bindProfileUI(){
       applyParams(prof.params);
       updateStockDxfUI();
       updateStockMiniInfo();
-      setStatus('Заготовка: прямоугольник');
+
+      const { cutCount, remCount } = clearCutsAndRemnants();
+      let msg = 'Заготовка: прямоугольник';
+      if (cutCount || remCount) msg += ` · очищено: ${cutCount} рез., ${remCount} ост.`;
+      setStatus(msg);
+
       import('./canvas.js').then(m => m.draw()).catch(() => {});
       import('./report.js').then(m => m.updateReport()).catch(() => {});
     });

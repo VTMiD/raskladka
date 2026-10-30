@@ -8,7 +8,9 @@ import { bindAutofitUI, closeAutofitModal } from './autofit.js';
 import { updateReport, openReportModal, closeReportModal, doPrint, buildReportHtml, buildLayoutHtml } from './report.js';
 import { bindDxfExportUI } from './dxf-export.js';
 import { bindExportsUI } from './exports.js';
-import { printLabels } from './labels.js';
+import { printLabels, buildRemnantLabelsHtml } from './labels.js';
+import { enterRemnantMode, exitRemnantMode, clearManualRemnants } from './canvas-remnant.js';
+import { saveRemnantDialog } from './remnant-io.js';
 import { bindArrayUI } from './array.js';
 import { bindFixingUI, collectFixedSeeds, buildPoolParts } from './fixing.js';
 import { showProgress, hideProgress, setProgress, requestCancel, isCancelRequested } from './progress.js';
@@ -108,7 +110,7 @@ $('btnNest').addEventListener('click', async () => {
       result = await nestGA(state.parts, params, setProgress, shouldStop);
     } else {
       const strategy = params.strategy === 'genetic' ? 'area' : params.strategy;
-      result = await nest(nestParts, params, setProgress, strategy, hasFixed ? seeds : undefined, shouldStop);
+     result = await nest(nestParts, params, setProgress, strategy, seeds.length ? seeds : undefined, shouldStop);
     }
 
     if((result && result.cancelled) || isCancelRequested()){
@@ -128,6 +130,9 @@ $('btnNest').addEventListener('click', async () => {
     state.cutMode = false;
     state.cutPoints = [];
     state.cutPreview = null;
+    state.remnantMode = false;
+    state.remnantPreview = null;
+    state.pendingEmptySelection = null;
 
     const job = getActiveJob();
     if(job) job.paramsSnapshot = { ...params };
@@ -176,7 +181,34 @@ $('btnPrintLayout').addEventListener('click', () => {
   doPrint(buildLayoutHtml(), 'landscape');
 });
 
-$('btnPrintLabels').addEventListener('click', printLabels);
+const labelsChoiceModal = document.getElementById('labelsChoiceModal');
+function openLabelsChoice(){
+  if(!state.parts.length){ alert('Сначала добавьте детали'); return; }
+  labelsChoiceModal?.classList.add('active');
+}
+function closeLabelsChoice(){
+  labelsChoiceModal?.classList.remove('active');
+}
+
+$('btnPrintLabels').addEventListener('click', openLabelsChoice);
+$('btnCloseLabelsChoice')?.addEventListener('click', closeLabelsChoice);
+$('btnCloseLabelsChoice2')?.addEventListener('click', closeLabelsChoice);
+labelsChoiceModal?.addEventListener('click', e => {
+  if(e.target === labelsChoiceModal) closeLabelsChoice();
+});
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape' && labelsChoiceModal?.classList.contains('active')) closeLabelsChoice();
+});
+
+$('btnPrintLabelsParts')?.addEventListener('click', () => {
+  closeLabelsChoice();
+  printLabels();
+});
+$('btnPrintLabelsRemnants')?.addEventListener('click', () => {
+  closeLabelsChoice();
+  if(!state.sheets.length){ alert('Сначала нажмите «Разложить»'); return; }
+  doPrint(buildRemnantLabelsHtml(), 'portrait');
+});
 
 try {
   loadProfiles();
@@ -204,7 +236,6 @@ bindCutUI();
 
 $('btnCancelNest')?.addEventListener('click', () => requestCancel());
 
-// ===== Линейка =====
 const btnMeasure = document.getElementById('btnMeasure');
 if(btnMeasure){
   btnMeasure.addEventListener('click', () => {
@@ -223,7 +254,6 @@ if(btnMeasureClear){
   });
 }
 
-// ===== Групповое выделение рамкой =====
 const btnSelectFrame = document.getElementById('btnSelectFrame');
 if(btnSelectFrame){
   btnSelectFrame.addEventListener('click', () => {
@@ -232,7 +262,54 @@ if(btnSelectFrame){
   });
 }
 
-// ===== Режим дублирования перетаскиванием =====
+const btnMarkRemnant = document.getElementById('btnMarkRemnant');
+if(btnMarkRemnant){
+  btnMarkRemnant.addEventListener('click', () => {
+    // ─── Если есть запомненная пустая область — создаём остаток ───
+    if (state.pendingEmptySelection) {
+      const { sheetIdx, rect, w, h } = state.pendingEmptySelection;
+      const sheet = state.sheets[sheetIdx];
+      if (sheet) {
+        if (!sheet.remnants) sheet.remnants = [];
+        sheet.remnants.push({
+          type: 'manual',
+          _manual: true,
+          polygon: null,
+          rect: { ...rect },
+          area: w * h,
+          cut: { x1: rect.x1, y1: rect.y1, x2: rect.x2, y2: rect.y1 },
+          w, h,
+        });
+        state.pendingEmptySelection = null;
+        setStatus(`📦 Остаток: ${Math.round(w)} × ${Math.round(h)} мм`);
+        draw();
+        pushHistory();
+        return;
+      }
+    }
+    // ─── Иначе — старый режим заливки ───
+    if(state.remnantMode) exitRemnantMode();
+    else enterRemnantMode();
+  });
+}
+
+const btnClearRemnants = document.getElementById('btnClearRemnants');
+if(btnClearRemnants){
+  btnClearRemnants.addEventListener('click', () => {
+    if(confirm('Удалить все ручные остатки на всех листах?')) clearManualRemnants();
+  });
+}
+
+const btnSaveRemnant = document.getElementById('btnSaveRemnant');
+if(btnSaveRemnant){
+  btnSaveRemnant.addEventListener('click', () => {
+    saveRemnantDialog().catch(err => {
+      console.error(err);
+      alert('Ошибка сохранения остатка: ' + err.message);
+    });
+  });
+}
+
 let duplicateModeActive = false;
 
 function syncDuplicateButton(){
@@ -337,7 +414,7 @@ draw();
 
 const UNDO_PARAM_FIELDS = [
   'inW','inH','inThick','inEdge','inKerf','inGap','inRot',
-  'inMaxSheets','inRemnantOn','inRemnantMin','inSnapThreshold','inGridStep',
+  'inMaxSheets','inRemnantOn','inRemnantMin','inRemnantGridStep','inSnapThreshold','inGridStep',
 ];
 for(const id of UNDO_PARAM_FIELDS){
   const el = $(id); if(!el) continue;
@@ -349,15 +426,6 @@ for(const id of UNDO_PARAM_FIELDS){
 
 // ============================================================================
 //                    СОХРАНЕНИЕ / ЗАГРУЗКА ПРОЕКТА
-// ============================================================================
-// Контракт с project-io.js: window.ProjectHooks = { collect(), restore(s) }
-//
-// Сохраняется:
-//   • Все профили заготовок (лист + контур DXF)
-//   • Активный профиль
-//   • Все задания со всеми деталями (имя, qty, bbox, ИСХОДНЫЙ ТЕКСТ DXF)
-//   • Раскладка каждого задания (позиции, поворот, зеркало, резы, отход)
-//   • Измерения (линейка)
 // ============================================================================
 
 function collectPartForSave(p){
@@ -371,7 +439,6 @@ function collectPartForSave(p){
     height:   p.height || 0,
     length:   p.length || 0,
   };
-  // Fallback: если исходного текста нет (старый формат), сохраняем геометрию
   if(!p.dxfText && Array.isArray(p.polygons)){
     rec.polygons = p.polygons;
   }
@@ -396,8 +463,12 @@ function collectSheetForSave(s){
       type: r.type,
       cut:  { ...r.cut },
       rect: { ...r.rect },
+      polygon: Array.isArray(r.polygon) ? r.polygon.map(p => [p[0], p[1]]) : null,
+      area: r.area || 0,
       w: r.w, h: r.h,
+      _manual: !!r._manual,
     })) : null,
+    obstacles: Array.isArray(s.obstacles) ? s.obstacles.map(o => ({ ...o })) : [],
   };
 }
 
@@ -443,7 +514,6 @@ function restorePartFromSave(pd){
     length:   pd.length || 0,
     polygons: Array.isArray(pd.polygons) ? pd.polygons : null,
   };
-  // Пере-парсим геометрию из dxfText — приоритет над сохранёнными полигонами
   if(part.dxfText){
     try {
       const parsed = parseDxfText(part.dxfText, part.name);
@@ -477,14 +547,17 @@ function restoreSheetFromSave(sd){
     cuts:     Array.isArray(sd.cuts) ? sd.cuts.map(c => ({ ...c })) : [],
     remnants: Array.isArray(sd.remnants) ? sd.remnants.map(r => ({
       type: r.type, cut: { ...r.cut }, rect: { ...r.rect }, w: r.w, h: r.h,
+      polygon: Array.isArray(r.polygon) ? r.polygon.map(p => [p[0], p[1]]) : null,
+      area: r.area || 0,
+      _manual: !!r._manual,
     })) : null,
+    obstacles: Array.isArray(sd.obstacles) ? sd.obstacles.map(o => ({ ...o })) : [],
   };
 }
 
 async function restoreProject(s){
   if(!s || typeof s !== 'object') return;
 
-  // 1. Профили (заготовки)
   if(Array.isArray(s.profiles) && s.profiles.length){
     profilesStore.profiles = s.profiles.map(p => ({
       id:         p.id || ('p_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,6)),
@@ -497,18 +570,15 @@ async function restoreProject(s){
     renderProfileSelect();
   }
 
-  // 2. Параметры текущей заготовки
   if(s.params){
     try { applyParams(s.params); } catch(e){ console.warn('applyParams:', e); }
   }
   try { updateGaParamsUI(); } catch(_){}
   try { updateStockDxfUI(); } catch(_){}
 
-  // 3. Контур заготовки (исходный текст)
   window.stockDxfText = s.stockDxfText || null;
   window.stockDxfName = s.stockDxfName || null;
 
-  // 4. Задания: очищаем и пересоздаём
   const savedJobs = Array.isArray(s.jobs) ? s.jobs : [];
   const activeIdx = s.activeJobId
     ? savedJobs.findIndex(j => j.id === s.activeJobId)
@@ -529,19 +599,16 @@ async function restoreProject(s){
     createJob('Задание №1');
   }
 
-  // 5. Активируем нужное задание (по индексу — ID при загрузке перегенерированы)
   if(activeIdx >= 0 && activeIdx < state.jobs.length){
     state.activeJobId = state.jobs[activeIdx].id;
   } else {
     state.activeJobId = state.jobs[0].id;
   }
 
-  // 6. Измерения
   state.measurements = (s.measurements || []).map(m => ({
     a: { ...m.a }, b: { ...m.b }
   }));
 
-  // 7. Сброс режимов
   state.measurePoints = [];
   state.measurePreview = null;
   state.selectedPart = null;
@@ -550,6 +617,9 @@ async function restoreProject(s){
   state.cutMode = false;
   state.cutPoints = [];
   state.cutPreview = null;
+  state.remnantMode = false;
+  state.remnantPreview = null;
+  state.pendingEmptySelection = null;
   state.duplicateMode = false;
   state.duplicateGhost = null;
   state.duplicateSource = null;
@@ -559,7 +629,6 @@ async function restoreProject(s){
   state.dropPreview = null;
   state.draggedPartIdx = null;
 
-  // 8. Обновляем UI
   renderJobSelect();
   renderPartsTable();
   try { updateReport([], '0'); } catch(_){}

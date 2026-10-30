@@ -6,7 +6,6 @@ import { applyParams } from './params.js';
 import { placedCountsByIdx, statusOf, refreshPartsStatus } from './part-status.js';
 import { pushHistory, initHistory, updateButtons } from './history.js';
 
-// ─── Авто-выделение содержимого поля при фокусе ───
 function attachAutoSelect(el){
   if(!el) return;
   let mouseDownStarted = false;
@@ -108,7 +107,6 @@ export function renderPartsTable(){
     });
   });
 
-  // ─── Поля количества в таблице ───
   let _qtyTimer = null;
   const inputs = getQtyInputs(wrap);
 
@@ -157,12 +155,11 @@ export function renderPartsTable(){
     });
   });
 
-  // ─── Клик по имени: одиночный → фокус в кол-во, двойной → переименование ───
   wrap.querySelectorAll('[data-edit=name]').forEach(td => {
     let clickTimer = null;
     td.addEventListener('click', e => {
-      if(e.detail > 1) return;        // двойной/тройной — обработает dblclick
-      if(clickTimer) return;          // уже идёт отсчёт
+      if(e.detail > 1) return;
+      if(clickTimer) return;
       const idx = +td.dataset.idx;
       clickTimer = setTimeout(() => {
         clickTimer = null;
@@ -183,10 +180,9 @@ export function renderPartsTable(){
     });
   });
 
-  // ─── Клик по пустому месту в ячейке «Кол-во» → фокус в input ───
   wrap.querySelectorAll('td.qty-cell').forEach(td => {
     td.addEventListener('click', e => {
-      if(e.target.tagName === 'INPUT') return; // клик по самому input обрабатывается штатно
+      if(e.target.tagName === 'INPUT') return;
       const inp = td.querySelector('input');
       if(inp){ inp.focus(); }
     });
@@ -228,6 +224,14 @@ export function updateSelectionUI(){
     tr.classList.toggle('selected', state.selectedRows.has(+tr.dataset.row));
   });
   updateSelInfo();
+
+  if (state.selectedRows.size) {
+    const firstIdx = Math.min(...state.selectedRows);
+    const tr = wrap.querySelector(`tr[data-row="${firstIdx}"]`);
+    if (tr) {
+      try { tr.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch(_) {}
+    }
+  }
 }
 
 export function updateSelInfo(){
@@ -593,7 +597,10 @@ export function bindPartsUI(){
     if(e.key === 'Delete'){
       const tag = (e.target && e.target.tagName || '').toLowerCase();
       if(tag === 'input' || tag === 'textarea') return;
-      if(!state.selectedPart && state.selectedRows.size) $('btnDelSelected')?.click();
+      if(!state.selectedPart && !(state.selectedParts && state.selectedParts.length) && state.selectedRows.size){
+        const wrap = $('partsTableWrap');
+        if(wrap && wrap.contains(document.activeElement)) $('btnDelSelected')?.click();
+      }
     }
   });
 }

@@ -20,6 +20,11 @@ export const state = {
   cutPoints: [],
   cutPreview: null,
 
+  remnantMode: false,
+  remnantPreview: null,
+
+  pendingEmptySelection: null,
+
   duplicateMode: false,
   duplicateGhost: null,
   duplicateSource: null,
@@ -81,6 +86,9 @@ export function switchJob(id){
   state.cutMode = false;
   state.cutPoints = [];
   state.cutPreview = null;
+  state.remnantMode = false;
+  state.remnantPreview = null;
+  state.pendingEmptySelection = null;
   state.duplicateMode = false;
   state.duplicateGhost = null;
   state.duplicateSource = null;
@@ -103,8 +111,9 @@ export function renameJob(id, name){
 
 export const DEFAULT_PARAMS = {
   sheetW:3000, sheetH:1500, thickness:6, edge:5, kerf:5, gap:2,
-  rotMode:4, maxSheets:5, strategy:'all',   // ← было 'area'
+  rotMode:4, maxSheets:5, strategy:'all',
   remnantOn:false, remnantMin:300,
+  remnantGridStep:10,
   snapThreshold:10,
   gridStep:10,
   gridShow:false,

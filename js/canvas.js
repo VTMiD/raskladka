@@ -28,16 +28,16 @@ import { showContextMenu, hideContextMenu } from './canvas-context.js';
 import {
   handleCutClick, updateCutPreview, enterCutMode, exitCutMode,
 } from './canvas-cut.js';
+import {
+  enterRemnantMode, exitRemnantMode,
+  handleRemnantClick, updateRemnantPreview,
+} from './canvas-remnant.js';
 
-// Re-export
 export { draw } from './canvas-draw.js';
 export { enterMeasureMode, exitMeasureMode } from './canvas-measure.js';
 export { enterGroupSelectMode, exitGroupSelectMode } from './canvas-drag.js';
 export { enterCutMode, exitCutMode } from './canvas-cut.js';
-
-// ═══════════════════════════════════════════════════════════════
-// Глобальные обработчики
-// ═══════════════════════════════════════════════════════════════
+export { enterRemnantMode, exitRemnantMode } from './canvas-remnant.js';
 
 document.addEventListener('mousedown', e => {
   const el = document.getElementById('contextMenu');
@@ -45,13 +45,12 @@ document.addEventListener('mousedown', e => {
 }, true);
 
 document.addEventListener('keydown', e => {
-  if(e.key === 'Escape' && !state.measureMode && !state.cutMode) hideContextMenu();
+  if(e.key === 'Escape' && !state.measureMode && !state.cutMode && !state.remnantMode) hideContextMenu();
 });
 
 window.addEventListener('resize', () => hideContextMenu());
 window.addEventListener('scroll', () => hideContextMenu(), true);
 
-// Перехват для групповой фиксации
 const _btnFixToggle = document.getElementById('btnFixToggle');
 if(_btnFixToggle){
   _btnFixToggle.addEventListener('click', e => {
@@ -62,10 +61,20 @@ if(_btnFixToggle){
   }, true);
 }
 
-// ─── Mouse down ───
-
 canvas.addEventListener('mousedown', e => {
   if(e.button !== 0) return;
+
+  if(state.pendingEmptySelection && !state.groupSelectMode){
+    state.pendingEmptySelection = null;
+    draw();
+  }
+
+  if(state.remnantMode){
+    const rect = canvas.getBoundingClientRect();
+    const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+    if(w) handleRemnantClick(w.x, w.y);
+    return;
+  }
 
   if(state.cutMode){
     const rect = canvas.getBoundingClientRect();
@@ -96,7 +105,6 @@ canvas.addEventListener('mousedown', e => {
   const w = screenToWorld(px, py); if(!w) return;
   const hit = hitTest(w.x, w.y);
 
-  // ─── РЕЖИМ ДУБЛИРОВАНИЯ ───
   if(state.duplicateMode){
     e.preventDefault();
 
@@ -117,7 +125,6 @@ canvas.addEventListener('mousedown', e => {
       }
       return;
     }
-
     return;
   }
 
@@ -174,9 +181,13 @@ canvas.addEventListener('mousedown', e => {
   draw();
 });
 
-// ─── Mouse move ───
-
 window.addEventListener('mousemove', e => {
+  if(state.remnantMode){
+    const rect = canvas.getBoundingClientRect();
+    const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+    if(w) updateRemnantPreview(w.x, w.y);
+    return;
+  }
   if(state.cutMode){
     const rect = canvas.getBoundingClientRect();
     const w = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
@@ -230,13 +241,11 @@ window.addEventListener('mousemove', e => {
   draw();
 });
 
-// ─── Mouse up ───
-
 window.addEventListener('mouseup', e => {
+  if(state.remnantMode) return;
   if(state.cutMode) return;
   if(state.measureMode) return;
 
-  // ─── РЕЖИМ ДУБЛИРОВАНИЯ: фиксация группы копий ───
   if(state.duplicateMode && state.duplicateGhost && state.duplicateGhost._dragging){
     const savedSrc = state.duplicateSource
       ? { sheetIdx: state.duplicateSource.sheetIdx, indices: (state.duplicateSource.indices || []).slice() }
@@ -329,16 +338,11 @@ window.addEventListener('mouseup', e => {
   if(moved) pushHistory();
 });
 
-// ─── Context menu ───
-
 canvas.addEventListener('contextmenu', e => {
   e.preventDefault();
 
-  if(state.duplicateGhost){
-    cancelDuplicateDrag();
-    return;
-  }
-
+  if(state.remnantMode){ exitRemnantMode(); return; }
+  if(state.duplicateGhost){ cancelDuplicateDrag(); return; }
   if(state.cutMode){ exitCutMode(); return; }
   if(state.measureMode){ exitMeasureMode(); return; }
   if(state.groupSelectMode){ exitGroupSelectMode(); return; }
@@ -358,10 +362,15 @@ canvas.addEventListener('contextmenu', e => {
   showContextMenu(e.clientX, e.clientY, hit);
 });
 
-// ─── Клавиатура ───
-
 document.addEventListener('keydown', e => {
   if(e.key === 'Escape'){
+    if(state.pendingEmptySelection){
+      state.pendingEmptySelection = null;
+      draw();
+      setStatus('');
+      return;
+    }
+    if(state.remnantMode){ exitRemnantMode(); return; }
     if(state.cutMode){
       if(state.cutPoints.length > 0){
         state.cutPoints = [];
@@ -400,27 +409,38 @@ document.addEventListener('keydown', e => {
       draw();
       return;
     }
-    if(state.selectedParts && state.selectedParts.length){
+    if((state.selectedParts && state.selectedParts.length) || state.selectedPart){
       state.selectedParts = [];
+      state.selectedPart = null;
+      state.selectedRows.clear();
+      import('./parts.js').then(m => m.updateSelectionUI()).catch(() => {});
       draw();
       setStatus('');
       return;
     }
-    if(state.selectedPart){ state.selectedPart = null; draw(); }
     return;
   }
 
   if(e.key === 'Delete' || e.key === 'Backspace'){
     const tag = (e.target && e.target.tagName || '').toLowerCase();
     if(tag === 'input' || tag === 'textarea' || (e.target && e.target.isContentEditable)) return;
-    if(state.selectedParts && state.selectedParts.length){
-      e.preventDefault();
+
+    const hadGroup  = state.selectedParts && state.selectedParts.length > 0;
+    const hadSingle = !!state.selectedPart;
+    if(!hadGroup && !hadSingle) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    if(hadGroup){
       deleteSelectedGroup();
-      return;
-    }
-    if(state.selectedPart){
-      e.preventDefault();
+    } else if(hadSingle){
       if(removePlacedPart(state.selectedPart.sheetIdx, state.selectedPart.placedIdx)) pushHistory();
+    }
+
+    if(state.selectedRows && state.selectedRows.size){
+      state.selectedRows.clear();
+      import('./parts.js').then(m => m.updateSelectionUI()).catch(() => {});
     }
     return;
   }
@@ -453,8 +473,6 @@ document.addEventListener('keydown', e => {
     return;
   }
 });
-
-// ─── Drag-drop деталей из таблицы на холст ───
 
 function findDropTarget(wx, wy){
   const v = state.view;
@@ -554,7 +572,7 @@ canvas.addEventListener('drop', e => {
   if(!part){ draw(); return; }
 
   if(!state.sheets.length){
-    state.sheets.push({ placed: [], cuts: [], remnants: [] });
+    state.sheets.push({ placed: [], cuts: [], remnants: [], obstacles: [] });
     draw();
   }
 
@@ -611,8 +629,6 @@ canvas.addEventListener('drop', e => {
     : `Деталь размещена: ${part.name}`);
   pushHistory();
 });
-
-// ─── Shift / Alt ───
 
 document.addEventListener('keydown', e => {
   if(e.key === 'Shift' && !state.snapDisabled){

@@ -16,7 +16,6 @@ function snapCutPoint(sx, sy, sheetIdx, shiftKey, lastPoint, noGrid) {
   const gridOn = !!params.gridShow && !noGrid;
   let x = sx, y = sy;
 
-  // Орто-режим по Shift
   if (shiftKey && lastPoint && lastPoint.sheetIdx === sheetIdx) {
     const dx = Math.abs(x - lastPoint.x);
     const dy = Math.abs(y - lastPoint.y);
@@ -24,14 +23,12 @@ function snapCutPoint(sx, sy, sheetIdx, shiftKey, lastPoint, noGrid) {
     else         x = lastPoint.x;
   }
 
-  // Притяжение к краям листа
   let snappedX = false, snappedY = false;
   if (Math.abs(x) < EDGE_SNAP_MM)      { x = 0;  snappedX = true; }
   if (Math.abs(x - SW) < EDGE_SNAP_MM) { x = SW; snappedX = true; }
   if (Math.abs(y) < EDGE_SNAP_MM)      { y = 0;  snappedY = true; }
   if (Math.abs(y - SH) < EDGE_SNAP_MM) { y = SH; snappedY = true; }
 
-  // Притяжение к конечным точкам существующих резов
   const sheet = state.sheets[sheetIdx];
   if (sheet && sheet.cuts) {
     let bestD = POINT_SNAP_MM;
@@ -45,7 +42,6 @@ function snapCutPoint(sx, sy, sheetIdx, shiftKey, lastPoint, noGrid) {
     if (bx !== null) { x = bx; y = by; snappedX = true; snappedY = true; }
   }
 
-  // Притяжение к сетке (если включена)
   if (gridOn) {
     if (!snappedX) {
       const kx = Math.round((x - edge) / step);
@@ -69,6 +65,15 @@ export function enterCutMode() {
     state.sheets.push({ placed: [], cuts: [], remnants: [] });
     draw();
   }
+  state.remnantMode = false;
+  state.remnantPreview = null;
+  state.rectRemnantMode = false;
+  state.rectRemnantDrag = null;
+  const mr = document.getElementById('btnMarkRemnant');
+  if (mr) mr.classList.remove('active');
+  const rr = document.getElementById('btnRectRemnant');
+  if (rr) rr.classList.remove('active');
+
   state.cutMode = true;
   state.cutPoints = [];
   state.cutPreview = null;

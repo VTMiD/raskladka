@@ -110,9 +110,13 @@ export function revertDrag(){
   pl._collides = false;
 }
 
-// ─── Групповое выделение и перемещение ───
-
 export function enterGroupSelectMode(){
+  state.remnantMode = false;
+  state.remnantPreview = null;
+  state.pendingEmptySelection = null;
+  const mr = document.getElementById('btnMarkRemnant');
+  if (mr) mr.classList.remove('active');
+
   state.groupSelectMode = true;
   state.groupSelectDrag = null;
   state.selectedPart = null;
@@ -120,14 +124,15 @@ export function enterGroupSelectMode(){
   const btn = document.getElementById('btnSelectFrame');
   if(btn) btn.classList.add('active');
   const hint = document.getElementById('canvasHint');
-  if(hint) hint.textContent = 'Обведите рамкой детали · Shift+рамка — добавить к выделению · Esc — отмена';
-  setStatus('Режим выделения рамкой: обведите группу деталей');
+  if(hint) hint.textContent = 'Обведите рамкой: детали — выделение, пустую область — запомним её для Фиксации/Остатка · Shift+рамка — добавить к выделению · Esc — отмена';
+  setStatus('Режим области: обведите детали или пустое место');
   draw();
 }
 
 export function exitGroupSelectMode(){
   state.groupSelectMode = false;
   state.groupSelectDrag = null;
+  state.pendingEmptySelection = null;
   canvas.style.cursor = '';
   const btn = document.getElementById('btnSelectFrame');
   if(btn) btn.classList.remove('active');
@@ -143,7 +148,6 @@ export function finalizeGroupSelect(){
   const fromMouse = rd && rd._fromMouse;
   state.groupSelectDrag = null;
 
-  // Если это была рамка от кнопки — выключаем режим
   if(!fromMouse){
     state.groupSelectMode = false;
     canvas.style.cursor = '';
@@ -157,10 +161,10 @@ export function finalizeGroupSelect(){
 
   const minX = Math.min(rd.x0, rd.x1), maxX = Math.max(rd.x0, rd.x1);
   const minY = Math.min(rd.y0, rd.y1), maxY = Math.max(rd.y0, rd.y1);
-  const dist = Math.hypot(maxX - minX, maxY - minY);
+  const distPx = Math.hypot(maxX - minX, maxY - minY);
 
-  // Клик без движения
-  if(dist < 5){
+  // Клик без протяжки — снять выделение (таблицу не трогаем)
+  if(distPx < 2){
     if(fromMouse){
       state.selectedParts = [];
       state.selectedPart = null;
@@ -176,8 +180,24 @@ export function finalizeGroupSelect(){
   const wx0 = (minX - v.originX) / v.scale, wx1 = (maxX - v.originX) / v.scale;
   const wy0 = (v.originY - maxY) / v.scale, wy1 = (v.originY - minY) / v.scale;
 
+  // ─── 0. Лист, где НАЧАТА рамка (по mousedown-точке) ───
+  const startWX = (rd.x0 - v.originX) / v.scale;
+  const startWY = (v.originY - rd.y0) / v.scale;
+  let startSheetIdx = -1;
+  for(let si=0; si<state.sheets.length; si++){
+    const x0 = si * (v.SW + v.gapBetween);
+    if(startWX >= x0 && startWX <= x0 + v.SW && startWY >= 0 && startWY <= v.SH){
+      startSheetIdx = si;
+      break;
+    }
+  }
+
+  // ─── 1. Выделение деталей по центрам ───
   const selected = [];
   for(let si=0; si<state.sheets.length; si++){
+    // Если рамка начата на конкретном листе — выделяем только там
+    if(startSheetIdx >= 0 && si !== startSheetIdx) continue;
+
     const sheet = state.sheets[si];
     const x0 = si * (v.SW + v.gapBetween);
     for(let pi=0; pi<sheet.placed.length; pi++){
@@ -202,13 +222,114 @@ export function finalizeGroupSelect(){
     state.selectedParts = selected;
   }
 
-  draw();
-  const total = state.selectedParts.length;
-  if(total){
-    setStatus(`Выделено: ${total} дет. Тащите любую — двинется вся группа. R/Z — повернуть/зеркалить. Delete — удалить.`);
-  } else {
-    setStatus('В рамке нет деталей');
+  if(state.selectedParts.length){
+    state.pendingEmptySelection = null;
+    draw();
+    setStatus('Выделено: ' + state.selectedParts.length + ' дет. Тащите любую — двинется вся группа. R/Z — повернуть/зеркалить. Delete — удалить.');
+    return;
   }
+
+  // ─── 2. Определяем лист для «пустой области» ───
+  let targetSi = -1;
+
+  // 2a. Приоритет — лист, где начата рамка
+  if(startSheetIdx >= 0){
+    targetSi = startSheetIdx;
+  } else {
+    // 2b. Иначе — по центру рамки
+    const cxWorld = (wx0 + wx1) / 2;
+    const cyWorld = (wy0 + wy1) / 2;
+    for(let si=0; si<state.sheets.length; si++){
+      const x0 = si * (v.SW + v.gapBetween);
+      if(cxWorld >= x0 && cxWorld <= x0 + v.SW && cyWorld >= 0 && cyWorld <= v.SH){
+        targetSi = si;
+        break;
+      }
+    }
+    // 2c. Иначе — по максимальной площади пересечения
+    if(targetSi < 0){
+      let bestArea = 0;
+      for(let si=0; si<state.sheets.length; si++){
+        const x0 = si * (v.SW + v.gapBetween);
+        const ix0 = Math.max(wx0, x0), ix1 = Math.min(wx1, x0 + v.SW);
+        const iy0 = Math.max(wy0, 0),  iy1 = Math.min(wy1, v.SH);
+        if(ix0 < ix1 && iy0 < iy1){
+          const area = (ix1 - ix0) * (iy1 - iy0);
+          if(area > bestArea){ bestArea = area; targetSi = si; }
+        }
+      }
+    }
+  }
+
+  if(targetSi < 0){
+    setStatus('Рамка вне листа');
+    draw();
+    return;
+  }
+
+  const ox = targetSi * (v.SW + v.gapBetween);
+  let lx0 = wx0 - ox, lx1 = wx1 - ox;
+  let ly0 = wy0, ly1 = wy1;
+
+  // ─── 3. Обрезка до [0, SW] × [0, SH] ───
+  lx0 = Math.max(0, Math.min(v.SW, lx0));
+  lx1 = Math.max(0, Math.min(v.SW, lx1));
+  ly0 = Math.max(0, Math.min(v.SH, ly0));
+  ly1 = Math.max(0, Math.min(v.SH, ly1));
+
+  // ─── 4. Привязка к сетке с магнитом к краям ───
+  const params = v.params;
+  const step = Math.max(1, params.gridStep || 10);
+  const snapEdge = Math.max(50, step * 3);
+
+  const snapToGrid = function(val, max){
+    if (val <= snapEdge) return 0;
+    if (val >= max - snapEdge) return max;
+    return Math.round(val / step) * step;
+  };
+
+  lx0 = snapToGrid(lx0, v.SW);
+  lx1 = snapToGrid(lx1, v.SW);
+  ly0 = snapToGrid(ly0, v.SH);
+  ly1 = snapToGrid(ly1, v.SH);
+
+  if (lx0 > lx1) { const t = lx0; lx0 = lx1; lx1 = t; }
+  if (ly0 > ly1) { const t = ly0; ly0 = ly1; ly1 = t; }
+
+  const w = lx1 - lx0, h = ly1 - ly0;
+  if(w < 20 || h < 20){
+    setStatus('Область слишком мала (мин. 20×20 мм)');
+    draw();
+    return;
+  }
+
+  // ─── 5. В области не должно быть деталей ───
+  const sheet = state.sheets[targetSi];
+  if (sheet){
+    for (const pl of sheet.placed){
+      if (pl.bbox[0] < lx1 && pl.bbox[2] > lx0 &&
+          pl.bbox[1] < ly1 && pl.bbox[3] > ly0){
+        setStatus('В области есть детали — уберите их или выделите рамкой вместе с ними');
+        draw();
+        return;
+      }
+    }
+  }
+
+  // ─── 6. Сохраняем ───
+  state.pendingEmptySelection = {
+    sheetIdx: targetSi,
+    rect: { x1: lx0, y1: ly0, x2: lx1, y2: ly1 },
+    w: w, h: h
+  };
+
+  const touchesEdge =
+    lx0 <= 1e-3 || lx1 >= v.SW - 1e-3 ||
+    ly0 <= 1e-3 || ly1 >= v.SH - 1e-3;
+  const edgeNote = touchesEdge ? ' (до края листа)' : '';
+  const sheetNote = 'Лист ' + (targetSi + 1) + ': ';
+  setStatus(sheetNote + 'Область' + edgeNote + ' — ' + Math.round(w) + ' x ' + Math.round(h) + ' мм. Нажмите Фиксация (запрет) или Остаток (сохранить)');
+  draw();
 }
 
 export function startGroupDrag(worldXY){
@@ -226,7 +347,7 @@ export function startGroupDrag(worldXY){
       pl,
       origX: pl.x,
       origY: pl.y,
-      origBbox: [...pl.bbox],
+      origBBox: [...pl.bbox],
       w: pl.bbox[2] - pl.bbox[0],
       h: pl.bbox[3] - pl.bbox[1],
     });
@@ -313,6 +434,14 @@ export function moveGroup(worldXY){
       const absPolys = pl.polygons.map(r => r.map(([px,py]) => [px + pl.x + params.edge, py + pl.y + params.edge]));
       if(!isPartInsideSheetPolygon(absPolys, params.sheetPolygons, params.edge)) collides = true;
     }
+    if(!collides && sheet.obstacles && sheet.obstacles.length){
+      const bb = pl.bbox;
+      for (const obs of sheet.obstacles){
+        if (bb[0] < obs.x2 && bb[2] > obs.x1 && bb[1] < obs.y2 && bb[3] > obs.y1){
+          collides = true; break;
+        }
+      }
+    }
     pl._collides = collides;
   }
 }
@@ -331,7 +460,7 @@ export function endGroupDrag(){
     for(const it of gd.items){
       it.pl.x = it.origX;
       it.pl.y = it.origY;
-      it.pl.bbox = [...it.origBbox];
+      it.pl.bbox = [...it.origBBox];
       it.pl._collides = false;
     }
     setStatus('Наложение при групповом перемещении — позиции восстановлены');

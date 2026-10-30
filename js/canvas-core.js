@@ -77,6 +77,13 @@ export function partCollidesAt(sheet, pl, x, y, buffer, W, H){
     if(!isPartInsideSheetPolygon(absPolys, params.sheetPolygons, params.edge)) return true;
   }
 
+  // ─── Проверка запретных зон (obstacles) ───
+  if (sheet.obstacles && sheet.obstacles.length) {
+    for (const obs of sheet.obstacles) {
+      if (x < obs.x2 && x + w > obs.x1 && y < obs.y2 && y + h > obs.y1) return true;
+    }
+  }
+
   const absA = pl.polygons.map(r => r.map(([px,py]) => [px + x, py + y]));
   for(const other of sheet.placed){
     if(other === pl) continue;
@@ -110,6 +117,20 @@ export function findNearestFreePosition(sheet, pl, x, y, W, H, buffer){
     ySet.add(ob[3] + buffer);
     ySet.add(ob[1]);
     ySet.add(ob[3] - myH);
+  }
+
+  // Учитываем запретные зоны как препятствия
+  if (sheet.obstacles && sheet.obstacles.length) {
+    for (const obs of sheet.obstacles) {
+      xSet.add(obs.x1 - myW - buffer);
+      xSet.add(obs.x2 + buffer);
+      xSet.add(obs.x1);
+      xSet.add(obs.x2 - myW);
+      ySet.add(obs.y1 - myH - buffer);
+      ySet.add(obs.y2 + buffer);
+      ySet.add(obs.y1);
+      ySet.add(obs.y2 - myH);
+    }
   }
 
   const candidates = [];

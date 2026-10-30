@@ -4,6 +4,15 @@ import { state } from './state.js';
 import { setStatus } from './utils.js';
 
 export function enterMeasureMode(){
+  state.remnantMode = false;
+  state.remnantPreview = null;
+  state.rectRemnantMode = false;
+  state.rectRemnantDrag = null;
+  const mr = document.getElementById('btnMarkRemnant');
+  if (mr) mr.classList.remove('active');
+  const rr = document.getElementById('btnRectRemnant');
+  if (rr) rr.classList.remove('active');
+
   state.measureMode = true;
   state.measurePoints = [];
   state.measurePreview = null;
