@@ -172,7 +172,7 @@ tr:hover{background:#f5faff}
 }
 #printArea{display:none}
 @media print{html,body{height:auto;overflow:visible;background:#fff}
-#app,#dropOverlay,#progressOverlay,#autofitModal,#reportModal,#measureBar,#cutBar{display:none!important}
+#app,#dropOverlay,#progressOverlay,#autofitModal,#reportModal,#measureBar,#cutBar,#labelsChoiceModal{display:none!important}
 body.printing #printArea{display:block!important}@page{margin:15mm}}
 #printArea{color:#000;font-family:'Times New Roman',serif;padding:10px 0}
 #printArea h1{font-size:18px;margin:0 0 4px 0;text-align:center}
@@ -231,6 +231,7 @@ body.printing #printArea{display:block!important}@page{margin:15mm}}
   display:flex;
   flex-direction:column;
   overflow:hidden;
+  position:relative;
 }
 .label-empty{
   height:40mm;
@@ -419,3 +420,69 @@ body.printing #printArea{display:block!important}@page{margin:15mm}}
   padding: 0 6px;
   white-space: nowrap;
 }
+
+/* ================================================================
+   Кнопка отметки остатка
+   ================================================================ */
+#btnMarkRemnant.active {
+  background: #2a9a3c;
+  border-color: #1a6a25;
+  color: #fff;
+  font-weight: bold;
+}
+#btnMarkRemnant.active:hover {
+  background: #1a6a25;
+}
+
+/* ================================================================
+   QR в этикетках деталей
+   ================================================================ */
+.label-qr-abs {
+  position: absolute;
+  bottom: 1mm;
+  left: 1mm;
+  width: 9mm;
+  height: 9mm;
+  opacity: 0.9;
+}
+.label-qr-abs svg { width: 100%; height: 100%; display: block; }
+
+/* ================================================================
+   Этикетки остатков — QR + штрихкод
+   ================================================================ */
+.remnant-code-row {
+  display: flex;
+  align-items: center;
+  gap: 2mm;
+  padding: 1mm 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  justify-content: center;
+}
+.remnant-qr {
+  width: 15mm;
+  height: 15mm;
+  flex-shrink: 0;
+}
+.remnant-qr svg { width: 100%; height: 100%; display: block; }
+.remnant-barcode {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  max-width: 24mm;
+}
+.remnant-barcode svg {
+  width: 100%;
+  height: 8mm;
+  display: block;
+}
+.remnant-barcode .remnant-dims {
+  font-size: 9px;
+  color: #555;
+  margin-top: 1px;
+  white-space: nowrap;
+}
+tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }

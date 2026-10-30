@@ -26,10 +26,10 @@
   <button id="btnOpenReport">ℹ Информация</button>
   <button id="btnPrintLabels">🏷 Этикетки</button>
   <div id="fixBar">
-    <button id="btnSelectFrame" title="Выделить детали рамкой для групповых действий и фиксации">🔲 Область</button>
-    <button id="btnFixToggle" title="Зафиксировать / снять фиксацию (детали или группы)">📌 Фиксация</button>
+    <button id="btnSelectFrame" title="Обвести область: с деталями — выделит их, пустую — запомнит для Фиксации/Остатка">📐 Область</button>
+    <button id="btnFixToggle" title="Зафиксировать детали / создать запретную зону из выделенной области">📌 Фиксация</button>
     <button id="btnUnfixAll" title="Снять фиксацию со всех деталей">🔓 Отменить фиксацию</button>
-    <button id="btnDuplicateSelected" title="Дублировать выделенные детали (Ctrl+D)">⧉ Дублировать</button>
+    <button id="btnDuplicateSelected" title="Дублировать выделенные (Ctrl+D)">⧉ Дублировать</button>
     <button id="btnNestRemnant" title="Переразложить остальные вокруг зафиксированных">▶ На остатке</button>
     <span id="fixCount" class="fix-count">📌 Зафиксировано: 0</span>
     <div id="status"></div>
@@ -38,6 +38,9 @@
       <button id="btnCutRemoveLast" type="button" title="Удалить последний рез" disabled>↶</button>
       <button id="btnCutClear" type="button" title="Удалить все резы" disabled>🗑</button>
       <span id="cutInfo" class="cut-info"></span>
+      <button id="btnMarkRemnant" type="button" title="Отметить остаток: кликните в свободную область — найдётся вся связная область">📦 Остаток</button>
+      <button id="btnSaveRemnant" type="button" title="Сохранить остаток в DXF-файл">💾 Сохранить остаток</button>
+      <button id="btnClearRemnants" type="button" title="Удалить все ручные остатки">🗑</button>
       <button id="btnMeasure" type="button" title="Измерить расстояние">📏 Линейка</button>
       <button id="btnMeasureClear" type="button" title="Очистить измерения">🗑</button>
     </div>
@@ -63,12 +66,14 @@
 </div>
 <div class="row"><label>X (ширина), мм</label><input id="inW" type="number" value="3000" step="1" min="1"></div>
 <div class="row"><label>Y (высота), мм</label><input id="inH" type="number" value="1500" step="1" min="1"></div>
+
 <div class="row" style="margin-top:6px">
   <button type="button" id="btnLoadStockDxf" style="flex:1" title="Загрузить контур заготовки из DXF">📂 Заготовка из DXF</button>
   <button type="button" class="danger" id="btnClearStockDxf" title="Сбросить контур" style="display:none">✕</button>
 </div>
 <div class="hint" id="stockDxfInfo" style="display:none;color:#2a6a30"></div>
 <input type="file" id="stockDxfInput" accept=".dxf" hidden>
+
 <div class="row"><label>Толщина, мм</label><input id="inThick" type="number" value="6" step="0.5" min="0.1"></div>
 <div class="row"><label>Отступ от края, мм
 <button type="button" class="help-btn" data-help="Технологический отступ деталей от кромки листа">?</button>
@@ -83,8 +88,11 @@
 <button type="button" class="help-btn" data-help="Радиус притягивания. Shift — отключить.">?</button>
 </label><input id="inSnapThreshold" type="number" value="10" step="1" min="0" max="50"></div>
 <div class="row"><label>Шаг сетки (Alt), мм
-<button type="button" class="help-btn" data-help="При перетаскивании с зажатым Alt — деталь движется ровно шагами по N мм. Галочка — показывать сетку на холсте; при включённой сетке резы прилипают к её узлам.">?</button>
+<button type="button" class="help-btn" data-help="При перетаскивании с зажатым Alt — деталь движется ровно шагами по N мм.">?</button>
 </label><input type="checkbox" id="inGridShow" title="Показывать сетку" style="width:auto;padding:0;margin:0;border:none;background:transparent;flex:0 0 auto;cursor:pointer"><input id="inGridStep" type="number" value="10" step="1" min="1" max="100"></div>
+<div class="row"><label>Шаг сетки остатка, мм
+<button type="button" class="help-btn" data-help="Точность контура полигонального остатка. Меньше — точнее, но медленнее. 10 мм — разумный компромисс.">?</button>
+</label><input id="inRemnantGridStep" type="number" value="10" step="1" min="2" max="50"></div>
 <div class="row"><label>Поворот</label>
 <select id="inRot">
 <option value="4">4 угла (0/90/180/270)</option>
@@ -92,7 +100,7 @@
 <option value="1">без поворота</option>
 </select></div>
 <div class="row"><label>Стратегия расчёта
-<button type="button" class="help-btn" data-help="Авто — перебор 3-х стратегий (по площади, по длине X, по ширине Y) в двух порядках укладки (построчно и постолбцово), выбирается лучший результат. По площади — быстрый проход (2 варианта укладки, берётся лучший). По длине X — длинная сторона детали вдоль X. По ширине Y — длинная сторона вдоль Y.">?</button>
+<button type="button" class="help-btn" data-help="Авто — перебор 3-х стратегий.">?</button>
 </label>
 <select id="inStrategy" class="wide">
 <option value="all" selected>Авто — лучший результат (медленнее)</option>
@@ -134,13 +142,13 @@
 <div class="empty">Файлы не добавлены. Перетащите DXF сюда.</div></div>
 <div class="batch-bar">
 <label>Кол-во выдел.:</label>
-<input id="batchQty" type="number" min="1" value="1" title="Введите количество и нажмите Enter или «Применить»">
-<button class="small" id="btnApplyQty" title="Установить выделенным указанное количество (Enter)">Применить</button>
-<button class="small" id="btnQtyInc" title="Прибавить +1 к текущему количеству каждой выделенной">+1</button>
-<button class="small" id="btnQtyDec" title="Отнять −1 (мин. 1) от текущего количества">−1</button>
-<button class="small" id="btnQtyMul2" title="Умножить количество на 2">×2</button>
-<button class="small" id="btnQtyDiv2" title="Разделить количество на 2 (мин. 1)">÷2</button>
-<button class="small" id="btnDupSelected" title="Дублировать строки в таблице деталей">Дублировать</button>
+<input id="batchQty" type="number" min="1" value="1">
+<button class="small" id="btnApplyQty" title="Установить выделенным указанное количество">Применить</button>
+<button class="small" id="btnQtyInc" title="Прибавить +1">+1</button>
+<button class="small" id="btnQtyDec" title="Отнять −1">−1</button>
+<button class="small" id="btnQtyMul2" title="Умножить ×2">×2</button>
+<button class="small" id="btnQtyDiv2" title="Разделить ÷2">÷2</button>
+<button class="small" id="btnDupSelected" title="Дублировать строки">Дублировать</button>
 <button class="small danger" id="btnDelSelected">Удалить</button>
 <span class="sel-info" id="selInfo"></span></div>
 <div class="row" style="margin-top:6px">
@@ -262,10 +270,33 @@
 </div>
 </div>
 
+<div class="modal-overlay" id="labelsChoiceModal">
+  <div class="modal-window" style="width:420px">
+    <div class="modal-header" style="background:#eaf4ff;border-bottom-color:#c9e0f5;color:#004a99">
+      <span>🏷 Печать этикеток</span>
+      <button class="close-btn" id="btnCloseLabelsChoice" title="Закрыть" style="color:#004a99">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="row" style="flex-direction:column;gap:8px">
+        <button id="btnPrintLabelsParts" class="primary" style="width:100%;padding:10px">📋 Этикетки деталей (раскладка)</button>
+        <button id="btnPrintLabelsRemnants" class="primary" style="width:100%;padding:10px">📦 Этикетки остатков (листы)</button>
+      </div>
+      <div class="hint" style="margin-top:10px">Этикетки остатков содержат QR-код и штрихкод для сканирования.</div>
+    </div>
+    <div class="modal-footer">
+      <button id="btnCloseLabelsChoice2">Закрыть</button>
+    </div>
+  </div>
+</div>
+
 <div id="contextMenu" class="context-menu"></div>
 <div id="dropOverlay">Отпустите DXF-файлы для загрузки</div>
 <div id="printArea"></div>
+
 <script src="https://cdn.jsdelivr.net/npm/dxf-parser@1.1.2/dist/dxf-parser.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
