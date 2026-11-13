@@ -1,4 +1,4 @@
-import { polysBBox, polygonArea, polysLength, chainSegments } from './geometry.js';
+import { polysBBox, polygonArea, polysLength, chainSegments, arcToPoints } from './geometry.js';
 import { parseRemnantMeta } from './remnant-io.js';
 
 const M_IDENT = {a:1,b:0,c:0,d:1,e:0,f:0};
@@ -100,15 +100,6 @@ function splineToPoints(e){
   return out;
 }
 
-function arcToPointsLocal(cx,cy,r,a1,a2){
-  while(a2<=a1) a2+=Math.PI*2;
-  const span=a2-a1;
-  const n=Math.max(8, Math.ceil(span/(Math.PI/12)));
-  const pts=[];
-  for(let i=0;i<=n;i++){ const a=a1+span*i/n; pts.push([cx+r*Math.cos(a), cy+r*Math.sin(a)]); }
-  return pts;
-}
-
 export function parseDxfText(text, name){
   if(typeof DxfParser === 'undefined') throw new Error('Библиотека dxf-parser не загрузилась.');
   const parser = new DxfParser();
@@ -118,6 +109,8 @@ export function parseDxfText(text, name){
 
   const closedRings = [];
   const segments = [];
+  const annotations = [];
+  const dimLines = [];
   const blocks = dxf.blocks || {};
   const stats = { layers:{}, types:{}, skipped:{} };
 
@@ -172,10 +165,10 @@ export function parseDxfText(text, name){
     }
     else if(e.type==='LINE' && e.vertices && e.vertices.length>=2){
       emitSeg(mApply(mat, e.vertices[0].x, e.vertices[0].y),
-              mApply(mat, e.vertices[1].x, e.vertices[1].y));
+          mApply(mat, e.vertices[1].x, e.vertices[1].y));
     }
     else if(e.type==='ARC'){
-      const local = arcToPointsLocal(e.center.x, e.center.y, e.radius, e.startAngle, e.endAngle);
+      const local = arcToPoints(e.center.x, e.center.y, e.radius, e.startAngle, e.endAngle);
       for(let i=0;i<local.length-1;i++)
         emitSeg(mApply(mat, local[i][0], local[i][1]), mApply(mat, local[i+1][0], local[i+1][1]));
     }
@@ -190,6 +183,61 @@ export function parseDxfText(text, name){
         const pts = local.map(p=>mApply(mat, p[0], p[1]));
         if(e.closed) emitRing(pts);
         else for(let i=0;i<pts.length-1;i++) emitSeg(pts[i], pts[i+1]);
+      }
+    }
+    else if(e.type==='TEXT'){
+      if (e.text && e.startPoint) {
+        const pos = mApply(mat, e.startPoint.x, e.startPoint.y);
+        annotations.push({
+          text: e.text,
+          x: pos[0], y: pos[1],
+          height: (e.height || 2.5),
+          rotation: e.rotation || 0
+        });
+      }
+    }
+    else if(e.type==='MTEXT'){
+      if (e.text) {
+        const pt = e.position || e.insertionPoint || {x:0, y:0};
+        const pos = mApply(mat, pt.x, pt.y);
+        const cleanText = e.text
+            .replace(/\\[A-Za-z0-9\.]+;/g, '')
+            .replace(/\\P/g, '\n')
+            .replace(/[\{\}]/g, '');
+
+        annotations.push({
+          text: cleanText,
+          x: pos[0], y: pos[1],
+          height: (e.height || 2.5),
+          rotation: e.rotation || 0
+        });
+      }
+    }
+    else if(e.type==='DIMENSION'){
+      if (e.block && blocks[e.block]) {
+        const blk = blocks[e.block];
+        for(const ent of blk.entities) {
+          if (ent.type === 'LINE' && ent.vertices && ent.vertices.length >= 2) {
+            const p1 = mApply(mat, ent.vertices[0].x, ent.vertices[0].y);
+            const p2 = mApply(mat, ent.vertices[1].x, ent.vertices[1].y);
+            dimLines.push({ type: 'line', x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1] });
+          }
+          else if (ent.type === 'SOLID' && ent.points && ent.points.length >= 3) {
+            const pts = ent.points.map(pt => mApply(mat, pt.x, pt.y));
+            dimLines.push({ type: 'solid', points: pts });
+          }
+          else if (ent.type === 'HATCH' && ent.points && ent.points.length >= 3) {
+            const pts = ent.points.map(pt => mApply(mat, pt.x, pt.y));
+            dimLines.push({ type: 'solid', points: pts });
+          }
+          else if (ent.type === 'TEXT' || ent.type === 'MTEXT' || ent.type === 'INSERT') {
+            const oldLen = annotations.length;
+            handleEntity(ent, mat, depth+1);
+            for(let i=oldLen; i<annotations.length; i++) {
+              annotations[i].isDim = true;
+            }
+          }
+        }
       }
     }
     else if(e.type==='INSERT' && depth<8){
@@ -230,6 +278,21 @@ export function parseDxfText(text, name){
 
   const bb = polysBBox(allRings);
   const norm = allRings.map(r=>r.map(([x,y])=>[x-bb[0], y-bb[1]]));
+
+  const normAnnotations = annotations.map(a => ({
+    ...a,
+    x: a.x - bb[0],
+    y: a.y - bb[1]
+  }));
+
+  const normDimLines = dimLines.map(dl => {
+    if (dl.type === 'line') {
+      return { type: 'line', x1: dl.x1 - bb[0], y1: dl.y1 - bb[1], x2: dl.x2 - bb[0], y2: dl.y2 - bb[1] };
+    } else {
+      return { type: 'solid', points: dl.points.map(([x,y]) => [x - bb[0], y - bb[1]]) };
+    }
+  });
+
   let outerArea=0;
   for(const r of norm){ const a=Math.abs(polygonArea(r)); if(a>outerArea) outerArea=a; }
   const length = polysLength(norm);
@@ -244,5 +307,7 @@ export function parseDxfText(text, name){
     width: bb[2]-bb[0], height: bb[3]-bb[1],
     length,
     meta,
+    annotations: normAnnotations,
+    dimLines: normDimLines
   };
 }

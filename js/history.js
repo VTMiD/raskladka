@@ -1,6 +1,9 @@
+// js/history.js
 import { state, getActiveJob } from './state.js';
 import { readParams, applyParams } from './params.js';
 import { setStatus } from './utils.js';
+import { scheduleAutosave } from './autosave.js';
+import { assignCutOrderAllSheets } from './cut-order.js';
 
 const MAX_HISTORY = 50;
 
@@ -22,12 +25,20 @@ function cloneSheets(sheets){
       x: pl.x, y: pl.y, bbox: [...pl.bbox],
       _fixed: !!pl._fixed,
       _fromArray: !!pl._fromArray,
+      _fromDuplicate: !!pl._fromDuplicate,
       _manual: !!pl._manual,
+      _cutOrder: pl._cutOrder,
+      _rotation: pl._rotation || 0, // <--- Сохраняем угол поворота
     })),
     cuts: (sh.cuts || []).map(c => ({ x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2 })),
     remnants: (sh.remnants || []).map(r => ({
-      type: r.type, cut: { ...r.cut }, rect: { ...r.rect }, w: r.w, h: r.h,
+      type: r.type, cut: { ...r.cut }, rect: { ...r.rect },
+      polygon: r.polygon ? r.polygon.map(p => [p[0], p[1]]) : null,
+      area: r.area || 0,
+      w: r.w, h: r.h,
+      _manual: !!r._manual,
     })),
+    obstacles: (sh.obstacles || []).map(o => ({ ...o })),
   }));
 }
 
@@ -82,6 +93,10 @@ export function initHistory(){
 export function pushHistory(){
   const job = getActiveJob();
   if(!job) return;
+
+  // Пересчитываем порядок реза перед сохранением
+  assignCutOrderAllSheets();
+
   const h = ensureHistory(job);
   if(h.index < 0){
     h.stack.push(takeSnapshot(job));
@@ -94,10 +109,11 @@ export function pushHistory(){
   if(h.stack.length > h.limit) h.stack.shift();
   h.index = h.stack.length - 1;
   updateButtons();
+  scheduleAutosave();
 }
 
 export async function undo(){
-  cancelScheduledPush();
+  flushScheduledPush(); // <--- ВАЖНО: Фиксируем текущее действие перед отменой
   const job = getActiveJob();
   if(!job) return false;
   const h = ensureHistory(job);
@@ -107,11 +123,12 @@ export async function undo(){
   await refreshUI();
   updateButtons();
   setStatus('Отменено');
+  scheduleAutosave();
   return true;
 }
 
 export async function redo(){
-  cancelScheduledPush();
+  flushScheduledPush(); // <--- ВАЖНО: Фиксируем текущее действие перед возвратом
   const job = getActiveJob();
   if(!job) return false;
   const h = ensureHistory(job);
@@ -121,6 +138,7 @@ export async function redo(){
   await refreshUI();
   updateButtons();
   setStatus('Возвращено');
+  scheduleAutosave();
   return true;
 }
 
@@ -148,7 +166,7 @@ async function refreshUI(){
   const [canvasMod, partsMod, reportMod, statusMod, paramsMod] = await Promise.all([
     import('./canvas.js'),
     import('./parts.js'),
-    import('./report.js'),
+    import('./report/report.js'),
     import('./part-status.js'),
     import('./params.js'),
   ]);

@@ -4,12 +4,14 @@ export function makeQrSvg(text, opts = {}) {
     return '';
   }
   try {
+    // ИЗМЕНЕНО: уровень 'M' (Medium, 15%) вместо 'H' (High, 30%).
+    // Квадратики станут крупнее на 25%, камере будет легче распознать код.
     const qr = qrcode(0, 'M');
     qr.addData(String(text));
     qr.make();
     return qr.createSvgTag({
-      cellSize: opts.cellSize || 2,
-      margin: opts.margin != null ? opts.margin : 0,
+      cellSize: opts.cellSize || 3,
+      margin: opts.margin != null ? opts.margin : 2,
       scalable: true,
     });
   } catch (e) {

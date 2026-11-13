@@ -4,7 +4,7 @@ import { readParams } from './params.js';
 import { nest, computeRemnants } from './nesting.js';
 import { draw } from './canvas.js';
 import { canvas, screenToWorld } from './canvas-core.js';
-import { updateReport } from './report.js';
+import { updateReport } from './report/report.js';
 import { showProgress, hideProgress, setProgress, isCancelRequested } from './progress.js';
 import { refreshPartsStatus } from './part-status.js';
 import { pushHistory } from './history.js';
@@ -56,9 +56,6 @@ function hitTestObstacle(wx, wy){
 }
 
 // ─── Клик ЛКМ по запретной зоне → удаляет её ───
-// ВАЖНО: слушаем НА window с capture=true — иначе canvas.js,
-// зарегистрировавший свой mousedown раньше, "съедает" клик первым
-// (на целевом элементе порядок регистрации важнее capture).
 window.addEventListener('mousedown', e => {
   if(e.button !== 0) return;
   if(e.target !== canvas) return;
@@ -73,11 +70,9 @@ window.addEventListener('mousedown', e => {
   const obsHit = hitTestObstacle(w.x, w.y);
   if(!obsHit) return;
 
-  // Попали в зону — блокируем остальные обработчики (canvas.js, контекстное меню и т.п.)
   e.preventDefault();
   e.stopImmediatePropagation();
 
-  // Принудительно закрываем контекстное меню, если было открыто
   const ctxMenu = document.getElementById('contextMenu');
   if(ctxMenu && ctxMenu.style.display !== 'none'){
     ctxMenu.style.display = 'none';
@@ -97,13 +92,17 @@ window.addEventListener('mousedown', e => {
   draw();
   pushHistory();
   setStatus(`🗑 Запретная зона удалена (${wMm} × ${hMm} мм, лист ${obsHit.sheetIdx + 1}). Ctrl+Z — вернуть`);
-}, true); // capture = true на window — срабатывает раньше ВСЕХ обработчиков на canvas
+}, true);
 
 export function fixSelectedToggle(){
   // ─── Если есть запомненная пустая область — создаём запретную зону ───
   if (state.pendingEmptySelection) {
-    const { sheetIdx, rect, w, h } = state.pendingEmptySelection;
+    let { sheetIdx, rect, w, h } = state.pendingEmptySelection;
     const sheet = state.sheets[sheetIdx];
+    const params = readParams();
+    const W = params.sheetW - 2*params.edge;
+    const H = params.sheetH - 2*params.edge;
+    
     if (sheet) {
       let hasParts = false;
       for (const pl of sheet.placed) {
@@ -116,6 +115,20 @@ export function fixSelectedToggle(){
         setStatus('⚠ В области есть детали — уберите их или выберите другое место');
         return;
       }
+
+      // 🛡️ ЖЕСТКАЯ ОБРЕЗКА: зона не может выходить за лист
+      rect.x1 = Math.max(0, Math.min(W, rect.x1));
+      rect.y1 = Math.max(0, Math.min(H, rect.y1));
+      rect.x2 = Math.max(0, Math.min(W, rect.x2));
+      rect.y2 = Math.max(0, Math.min(H, rect.y2));
+      w = rect.x2 - rect.x1;
+      h = rect.y2 - rect.y1;
+
+      if (w <= 0 || h <= 0) {
+        setStatus('⚠ Область пустая или за пределами листа');
+        return;
+      }
+
       if (!sheet.obstacles) sheet.obstacles = [];
       sheet.obstacles.push({ ...rect });
       state.pendingEmptySelection = null;

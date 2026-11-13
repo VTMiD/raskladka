@@ -1,9 +1,10 @@
+// js/canvas-ops.js
 import { state } from './state.js';
 import { readParams } from './params.js';
 import { getPlaced, updateFixCount } from './canvas-core.js';
-import { draw } from './canvas-draw.js';
+import { draw } from './canvas/render.js';
 import { computeSnap } from './snap.js';
-import { updateReport } from './report.js';
+import { updateReport } from './report/report.js';
 import { refreshPartsStatus } from './part-status.js';
 import { pushHistory } from './history.js';
 import { setStatus } from './utils.js';
@@ -113,6 +114,7 @@ export function duplicatePlacedPart(sheetIdx, placedIdx){
     polygons: orig.polygons.map(r => r.map(([px, py]) => [px, py])),
     x: spot.x, y: spot.y,
     bbox: [spot.x, spot.y, spot.x + spot.w, spot.y + spot.h],
+    layerId: orig.layerId || 1,
     _manual: true,
     _fixed: false,
   };
@@ -155,6 +157,7 @@ export function duplicateSelection(){
       polygons: orig.polygons.map(r => r.map(([px, py]) => [px, py])),
       x: spot.x, y: spot.y,
       bbox: [spot.x, spot.y, spot.x + spot.w, spot.y + spot.h],
+      layerId: orig.layerId || 1,
       _manual: true,
       _fixed: false,
     };
@@ -172,10 +175,6 @@ export function duplicateSelection(){
   }
   return newSel.length;
 }
-
-// ═══════════════════════════════════════════════════════════════
-// ДУБЛИРОВАНИЕ ПЕРЕТАСКИВАНИЕМ — ГРУППОВОЙ GHOST
-// ═══════════════════════════════════════════════════════════════
 
 export function startDuplicateDragFromSelection(sel){
   let arr = Array.isArray(sel) ? sel.slice() : (sel ? [sel] : []);
@@ -210,6 +209,7 @@ export function startDuplicateDragFromSelection(sel){
       w, h,
       x: pl.x, y: pl.y,
       origX: pl.x, origY: pl.y,
+      layerId: pl.layerId || 1,
       collides: false,
     });
     if(pl.x < minX) minX = pl.x;
@@ -306,6 +306,7 @@ export function updateDuplicateGhost(worldXY){
       const it = g.items[i];
       const absA = it.polygons.map(r => r.map(([px, py]) => [px + it.x, py + it.y]));
 
+      // Проверка с другими деталями на листе (исключая исходные)
       for(let si = 0; si < sheet.placed.length; si++){
         if(sourceSet.has(si)) continue;
         const other = sheet.placed[si];
@@ -314,6 +315,7 @@ export function updateDuplicateGhost(worldXY){
       }
       if(it.collides) continue;
 
+      // Проверка между самими перемещаемыми деталями
       for(let j = 0; j < g.items.length; j++){
         if(i === j) continue;
         const other = g.items[j];
@@ -321,10 +323,24 @@ export function updateDuplicateGhost(worldXY){
         if(polysCollide(absA, absB, buffer)){ it.collides = true; anyCollides = true; break; }
       }
 
+      // Проверка выхода за контур заготовки
       if(!it.collides && params.sheetPolygons && params.sheetPolygons.length){
         const absPolys = it.polygons.map(r => r.map(([px, py]) => [px + it.x + params.edge, py + it.y + params.edge]));
         if(!isPartInsideSheetPolygon(absPolys, params.sheetPolygons, params.edge)){
           it.collides = true; anyCollides = true;
+        }
+      }
+
+      // Проверка запретных зон (obstacles), ИГНОРИРУЯ те, что за пределами листа
+      if (!it.collides && sheet.obstacles && sheet.obstacles.length) {
+        const bb = [it.x, it.y, it.x + it.w, it.y + it.h];
+        for (const obs of sheet.obstacles) {
+          if (obs.x1 < -1 || obs.y1 < -1 || obs.x2 > W + 1 || obs.y2 > H + 1) continue;
+          if (bb[0] < obs.x2 && bb[2] > obs.x1 && bb[1] < obs.y2 && bb[3] > obs.y1) {
+            it.collides = true; 
+            anyCollides = true; 
+            break;
+          }
         }
       }
     }
@@ -363,6 +379,7 @@ export function commitDuplicateGhost(){
       polygons: it.polygons.map(r => r.map(([px, py]) => [px, py])),
       x: it.x, y: it.y,
       bbox: [it.x, it.y, it.x + it.w, it.y + it.h],
+      layerId: it.layerId || 1,
       _manual: true,
       _fixed: false,
       _fromDuplicate: true,
@@ -390,10 +407,6 @@ export function cancelDuplicateDrag(){
   state.duplicateSource = null;
   draw();
 }
-
-// ═══════════════════════════════════════════════════════════════
-// Поворот / зеркало / фиксация — одиночная деталь
-// ═══════════════════════════════════════════════════════════════
 
 export function rotateSelected(direction){
   if(!state.selectedPart) return false;
@@ -652,6 +665,16 @@ export function rotateSelectedGroup(direction){
       const absPolys = pl.polygons.map(r => r.map(([px,py]) => [px + pl.x + params.edge, py + pl.y + params.edge]));
       if(!isPartInsideSheetPolygon(absPolys, params.sheetPolygons, params.edge)){ anyCollision = true; break; }
     }
+    if (sheet.obstacles && sheet.obstacles.length) {
+      const bb = pl.bbox;
+      for (const obs of sheet.obstacles) {
+        if (obs.x1 < -1 || obs.y1 < -1 || obs.x2 > W + 1 || obs.y2 > H + 1) continue;
+        if (bb[0] < obs.x2 && bb[2] > obs.x1 && bb[1] < obs.y2 && bb[3] > obs.y1) {
+          anyCollision = true; break;
+        }
+      }
+    }
+    if(anyCollision) break;
   }
 
   if(anyCollision){
@@ -737,6 +760,16 @@ export function mirrorSelectedGroup(axis){
       const absPolys = pl.polygons.map(r => r.map(([px,py]) => [px + pl.x + params.edge, py + pl.y + params.edge]));
       if(!isPartInsideSheetPolygon(absPolys, params.sheetPolygons, params.edge)){ anyCollision = true; break; }
     }
+    if (sheet.obstacles && sheet.obstacles.length) {
+      const bb = pl.bbox;
+      for (const obs of sheet.obstacles) {
+        if (obs.x1 < -1 || obs.y1 < -1 || obs.x2 > W + 1 || obs.y2 > H + 1) continue;
+        if (bb[0] < obs.x2 && bb[2] > obs.x1 && bb[1] < obs.y2 && bb[3] > obs.y1) {
+          anyCollision = true; break;
+        }
+      }
+    }
+    if(anyCollision) break;
   }
 
   if(anyCollision){

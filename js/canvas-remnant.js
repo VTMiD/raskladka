@@ -1,5 +1,5 @@
 import { canvas, worldToSheet, screenToWorld, DEFAULT_HINT } from './canvas-core.js';
-import { draw } from './canvas-draw.js';
+import { draw } from './canvas/render.js';
 import { state } from './state.js';
 import { readParams } from './params.js';
 import { setStatus } from './utils.js';
@@ -10,7 +10,6 @@ const REMNANT_MIN_SIDE = 20;
 const SAME_REMNANT_TOL = 1;
 const DEFAULT_GRID_STEP = 10;
 
-// ─── Геометрия ────────────────────────────────────────────────
 function segsIntersect(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2) {
   const d1 = (bx2 - bx1) * (ay1 - by1) - (by2 - by1) * (ax1 - bx1);
   const d2 = (bx2 - bx1) * (ay2 - by1) - (by2 - by1) * (ax2 - bx1);
@@ -315,7 +314,6 @@ function findRemnantPolygonAt(sheet, px, py, params){
   const contours = traceContours(region, nx, ny);
 
   if (!contours.length) {
-    // Fallback: строим прямоугольник по крайним точкам залитой области
     let minCi = nx, maxCi = -1, minCj = ny, maxCj = -1;
     for (let cj = 0; cj < ny; cj++) {
       for (let ci = 0; ci < nx; ci++) {
@@ -362,7 +360,6 @@ function findRemnantPolygonAt(sheet, px, py, params){
   return { polygon: mmContour, rect, w, h, area, hasParts, reason: 'ok' };
 }
 
-// ─── Публичный API ───────────────────────────────────────────
 export function computeRemnantPreview(wx, wy){
   const tgt = worldToSheet(wx, wy);
   if (!tgt) return null;

@@ -28,6 +28,25 @@ export const state = {
   duplicateMode: false,
   duplicateGhost: null,
   duplicateSource: null,
+
+  // Камера
+  camera: { scale: null, originX: null, originY: null },
+  _suppressContextMenu: false,
+  _selectedRowsFromCanvas: false,
+
+  // Фильтр
+  partsSearchQuery: '',
+  partsFilterUnplaced: false,
+  
+  // Отображение
+  showNames: true,
+  showCutOrder: true,
+
+  // ─── СЛОИ ───
+  layers: [
+    { id: 1, name: 'Детали', color: '#ff5555', order: 1, visible: true },
+    { id: 2, name: 'Рез остатка', color: '#2a9a3c', order: 2, visible: true }
+  ]
 };
 
 export function getActiveJob(){
@@ -92,6 +111,12 @@ export function switchJob(id){
   state.duplicateMode = false;
   state.duplicateGhost = null;
   state.duplicateSource = null;
+  state._selectedRowsFromCanvas = false;
+  if (state.camera) {
+    state.camera.scale = null;
+    state.camera.originX = null;
+    state.camera.originY = null;
+  }
   return getActiveJob();
 }
 

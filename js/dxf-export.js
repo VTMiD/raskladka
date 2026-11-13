@@ -1,6 +1,7 @@
-import { $, setStatus } from './utils.js';
+import { $, setStatus, askFileNameWithPath, makeDestinationHint, downloadBlob, saveFileToServer } from './utils.js';
 import { state, HAS_SAVE_PICKER, FS_IDS } from './state.js';
-import { readParams, makeBaseName } from './params.js';
+import { readParams, makeSafeBaseName } from './params.js';
+import { todayIso } from './utils.js';
 
 let _hCounter = 0x100;
 function nextHandle(){ return (++_hCounter).toString(16).toUpperCase(); }
@@ -18,6 +19,8 @@ function writeLayerTable(lines){
   p(2,'REMNANT'); p(70,0); p(62,5); p(6,'CONTINUOUS'); p(370,-3);
   p(0,'LAYER'); p(5,'14'); p(100,'AcDbSymbolTableRecord'); p(100,'AcDbLayerTableRecord');
   p(2,'SHEETCUT'); p(70,0); p(62,30); p(6,'CONTINUOUS'); p(370,-3);
+  p(0,'LAYER'); p(5,'15'); p(100,'AcDbSymbolTableRecord'); p(100,'AcDbLayerTableRecord');
+  p(2,'META'); p(70,0); p(62,3); p(6,'CONTINUOUS'); p(370,-3);
   p(0,'ENDTAB');
 }
 function writeLwPolyline(lines, points, closed, layer){
@@ -41,7 +44,29 @@ function writeTextEntity(lines, text, x, y, height, rotation, layer){
   p(10, x.toFixed(4)); p(20, y.toFixed(4)); p(30,'0.0'); p(40, height.toFixed(4));
   p(1, String(text)); p(50, String(rotation||0)); p(7,'STANDARD');
 }
-function writeSheetEntities(lines, sheet, params, ox, SW, SH){
+
+function writeSheetMeta(lines, params, sheet, sheetIdx, totalSheets){
+  const date = todayIso();
+  const name = `List_${sheetIdx+1}_${Math.round(params.sheetW)}x${Math.round(params.sheetH)}x${params.thickness}_${date}`;
+  const fields = {
+    name,
+    width: Math.round(params.sheetW),
+    height: Math.round(params.sheetH),
+    thickness: params.thickness,
+    edge: params.edge,
+    kerf: params.kerf,
+    gap: params.gap,
+    parts: (sheet.placed || []).length,
+    number: sheetIdx + 1,
+    total: totalSheets,
+    date,
+  };
+  for (const [key, val] of Object.entries(fields)){
+    writeTextEntity(lines, `SHEET|${key}=${val}`, 0, 0, 6, 0, 'META');
+  }
+}
+
+function writeSheetEntities(lines, sheet, params, ox, SW, SH, sheetIdx, totalSheets){
   if(params.sheetPolygons && params.sheetPolygons.length){
     for(const ring of params.sheetPolygons){
       if(ring.length < 2) continue;
@@ -79,6 +104,9 @@ function writeSheetEntities(lines, sheet, params, ox, SW, SH){
       writeLineEntity(lines, ox + c.x1, c.y1, ox + c.x2, c.y2, 'SHEETCUT');
     }
   }
+  if (sheetIdx != null && totalSheets != null){
+    writeSheetMeta(lines, params, sheet, sheetIdx, totalSheets);
+  }
 }
 
 export function buildDxfAllSheets(){
@@ -91,14 +119,16 @@ export function buildDxfAllSheets(){
   p(0,'SECTION'); p(2,'HEADER'); p(9,'$ACADVER'); p(1,'AC1015'); p(9,'$INSUNITS'); p(70,4); p(0,'ENDSEC');
   p(0,'SECTION'); p(2,'TABLES'); writeLayerTable(lines); p(0,'ENDSEC');
   p(0,'SECTION'); p(2,'ENTITIES');
+  const total = state.sheets.length;
   for(let si=0; si<state.sheets.length; si++){
     const sheet = state.sheets[si];
     const ox = si * (SW + gapBetween);
-    writeSheetEntities(lines, sheet, params, ox, SW, SH);
+    writeSheetEntities(lines, sheet, params, ox, SW, SH, si, total);
   }
   p(0,'ENDSEC'); p(0,'EOF');
   return lines.join('\r\n') + '\r\n';
 }
+
 export function buildDxfSingleSheet(sheetIndex){
   _hCounter = 0x100;
   const params = readParams();
@@ -109,12 +139,19 @@ export function buildDxfSingleSheet(sheetIndex){
   p(0,'SECTION'); p(2,'HEADER'); p(9,'$ACADVER'); p(1,'AC1015'); p(9,'$INSUNITS'); p(70,4); p(0,'ENDSEC');
   p(0,'SECTION'); p(2,'TABLES'); writeLayerTable(lines); p(0,'ENDSEC');
   p(0,'SECTION'); p(2,'ENTITIES');
-  writeSheetEntities(lines, sheet, params, 0, SW, SH);
+  writeSheetEntities(lines, sheet, params, 0, SW, SH, sheetIndex, state.sheets.length);
   p(0,'ENDSEC'); p(0,'EOF');
   return lines.join('\r\n') + '\r\n';
 }
 
-async function saveDxfFile(text, suggestedName, pickerId){
+// ─── Сохранение с fallback на диалог браузера ────────────────
+async function saveDxfFile(text, suggestedName, pickerId, category){
+  if (category) {
+    const res = await saveFileToServer(category, '', suggestedName, text);
+    if (res.ok) return res;
+    console.warn('[DXF] server save failed:', res.error);
+  }
+
   if(HAS_SAVE_PICKER){
     try {
       const handle = await window.showSaveFilePicker({
@@ -130,36 +167,54 @@ async function saveDxfFile(text, suggestedName, pickerId){
     }
   }
   const blob = new Blob([text], {type:'application/dxf'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = suggestedName;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, suggestedName);
   return { ok:true, name: suggestedName, downloaded:true };
 }
 
 export function bindDxfExportUI(){
   $('btnExport').addEventListener('click', async () => {
     if(!state.sheets.length){ alert('Сначала нажмите «Разложить»'); return; }
+    const defaultName = makeSafeBaseName();
+    const name = await askFileNameWithPath({
+      title: '💾 Сохранить все листы в DXF',
+      defaultName,
+      destinationHint: makeDestinationHint('sheets', ''),
+      storageKey: 'dxfAll',
+      saveLabel: '💾 Сохранить DXF',
+    });
+    if (!name) return;
     const dxfText = buildDxfAllSheets();
-    const suggested = makeBaseName() + '.dxf';
+    const suggested = name + '.dxf';
     setStatus('Сохранение...');
-    const res = await saveDxfFile(dxfText, suggested, FS_IDS.save);
+    const res = await saveDxfFile(dxfText, suggested, FS_IDS.save, 'sheets');
     if(res.cancelled){ setStatus(''); return; }
-    if(res.ok) setStatus((res.downloaded?'Скачано: ':'Сохранено: ') + res.name);
+    if(res.ok) {
+      if (res.viaServer) setStatus(`Сохранено: ${res.path}`);
+      else if (res.downloaded) setStatus(`Скачано: ${res.name}`);
+      else setStatus(`Сохранено: ${res.name}`);
+    }
   });
 
   $('btnExportSplit').addEventListener('click', async () => {
     if(!state.sheets.length){ alert('Сначала нажмите «Разложить»'); return; }
-    const base = makeBaseName();
+    const defaultBase = makeSafeBaseName();
+    const base = await askFileNameWithPath({
+      title: '💾 Сохранить листы в DXF (каждый отдельно)',
+      defaultName: defaultBase,
+      destinationHint: makeDestinationHint('sheets', ''),
+      storageKey: 'dxfSplit',
+      saveLabel: '💾 Сохранить по листам',
+    });
+    if (!base) return;
     setStatus('Сохранение по листам...');
     for(let i=0; i<state.sheets.length; i++){
       const dxfText = buildDxfSingleSheet(i);
-      const suggested = `${base}_лист${i+1}.dxf`;
-      const res = await saveDxfFile(dxfText, suggested, FS_IDS.save + '-' + i);
+      const suggested = `${base}_list${i+1}.dxf`;
+      const res = await saveDxfFile(dxfText, suggested, FS_IDS.save + '-' + i, 'sheets');
       if(res.cancelled){ setStatus('Отменено на листе ' + (i+1)); return; }
       if(!res.ok){ setStatus('Ошибка на листе ' + (i+1)); return; }
-      setStatus(`Сохранено ${i+1} / ${state.sheets.length}: ${res.name}`);
+      if (res.viaServer) setStatus(`Сохранено ${i+1} / ${state.sheets.length}: ${res.path}`);
+      else setStatus(`Сохранено ${i+1} / ${state.sheets.length}: ${res.name}`);
     }
     setStatus(`Готово: ${state.sheets.length} файл(ов)`);
   });
