@@ -12,26 +12,27 @@
 <div id="topbar">
   <h1>Раскладка DXF</h1>
   <button id="btnNest" class="primary">▶ Разложить</button>
+  <button id="btnNestRemnant" title="Доразложить остальные детали вокруг зафиксированных">▶ На остатке</button>
   <button id="btnOpenAutofit">🎯 Подбор заготовки</button>
+  <button id="btnOpenRemnantCatalog" title="Каталог остатков со всех листов">📚 Остатки</button>
   <button id="btnSaveProject" title="Сохранить весь проект в один файл (.dxfnest.json)">💾 Сохранить проект</button>
   <button id="btnLoadProject" title="Открыть проект из файла (.dxfnest.json)">📂 Открыть проект</button>
   <input type="file" id="projectFileInput" accept=".json,.dxfnest,application/json" hidden>
   <button id="btnExport">Экспорт DXF (всё)</button>
   <button id="btnExportSplit">Экспорт DXF (по листам)</button>
-  <button id="btnPrintReport">🖨 Печать отчёта</button>
-  <button id="btnPrintLayout">🗺 Печать карты</button>
-  <button id="btnSaveHtml">🖼 Отчёт JPG</button>
-  <button id="btnSaveJpgSheets">🖼 Карта JPG</button>
-  <button id="btnOpenArray">🔲 Массив</button>
-  <button id="btnOpenReport">ℹ Информация</button>
+  <button id="btnLayers" title="Управление слоями и порядок реза">🎨 Слои</button>
+  <button id="btnExportGcode" title="Экспорт G-code (постпроцессор AMN Tech THC)">⚙ G-code</button>
+  <button id="btnOpenReportsMenu" title="Печать и JPG-отчёты">📄 Отчёты</button>
   <button id="btnPrintLabels">🏷 Этикетки</button>
+  <button id="btnOpenReport">ℹ Информация</button>
   <div id="fixBar">
     <button id="btnSelectFrame" title="Обвести область: с деталями — выделит их, пустую — запомнит для Фиксации/Остатка">📐 Область</button>
     <button id="btnFixToggle" title="Зафиксировать детали / создать запретную зону из выделенной области">📌 Фиксация</button>
-    <button id="btnUnfixAll" title="Снять фиксацию со всех деталей">🔓 Отменить фиксацию</button>
+    <button id="btnUnfixAll" title="Снять фиксацию со всех деталей и запретные зоны">🔓 Отменить фиксацию</button>
     <button id="btnDuplicateSelected" title="Дублировать выделенные (Ctrl+D)">⧉ Дублировать</button>
-    <button id="btnNestRemnant" title="Переразложить остальные вокруг зафиксированных">▶ На остатке</button>
+    <button id="btnOpenArray" title="Массив деталей">🔲 Массив</button>
     <span id="fixCount" class="fix-count">📌 Зафиксировано: 0</span>
+    <span id="autosaveInfo" class="autosave-info"></span>
     <div id="status"></div>
     <div class="tools-group">
       <button id="btnCut" type="button" title="Резать лист по прямым (клик → клик). Shift — орто, Ctrl — без привязки.">✂ Резать лист</button>
@@ -39,12 +40,18 @@
       <button id="btnCutClear" type="button" title="Удалить все резы" disabled>🗑</button>
       <span id="cutInfo" class="cut-info"></span>
       <button id="btnMarkRemnant" type="button" title="Отметить остаток: кликните в свободную область — найдётся вся связная область">📦 Остаток</button>
-      <button id="btnSaveRemnant" type="button" title="Сохранить остаток в DXF-файл">💾 Сохранить остаток</button>
+      <button id="btnSaveRemnant" type="button" title="Сохранить остаток в DXF-файл">💾</button>
       <button id="btnClearRemnants" type="button" title="Удалить все ручные остатки">🗑</button>
       <button id="btnMeasure" type="button" title="Измерить расстояние">📏 Линейка</button>
       <button id="btnMeasureClear" type="button" title="Очистить измерения">🗑</button>
     </div>
   </div>
+</div>
+<div id="autosaveBanner" style="display:none">
+  <span>💾 Найдено автосохранение от <b id="autosaveBannerDate">—</b></span>
+  <button id="btnAutosaveRestore" class="primary">Восстановить</button>
+  <button id="btnAutosaveDiscard">Удалить</button>
+  <button id="btnAutosaveClose" title="Закрыть баннер">✕</button>
 </div>
 <div id="content">
 <aside id="side">
@@ -75,6 +82,15 @@
 <input type="file" id="stockDxfInput" accept=".dxf" hidden>
 
 <div class="row"><label>Толщина, мм</label><input id="inThick" type="number" value="6" step="0.5" min="0.1"></div>
+<div class="row"><label>Плотность, кг/м³
+  <button type="button" class="help-btn" data-help="Сталь — 7850, Нержавейка — 7900, Алюминий — 2700, Латунь — 8500">?</button>
+</label>
+<select id="inDensity" class="wide">
+  <option value="7850" selected>Сталь (7850)</option>
+  <option value="7900">Нержавейка (7900)</option>
+  <option value="2700">Алюминий (2700)</option>
+  <option value="8500">Латунь (8500)</option>
+</select></div>
 <div class="row"><label>Отступ от края, мм
 <button type="button" class="help-btn" data-help="Технологический отступ деталей от кромки листа">?</button>
 </label><input id="inEdge" type="number" value="5" step="1" min="0"></div>
@@ -138,6 +154,14 @@
 <button id="btnAdd" style="flex:1">+ Добавить DXF (пакетно)</button>
 <button id="btnClear" class="danger">Очистить</button></div>
 <input id="fileInput" type="file" accept=".dxf" multiple hidden>
+<div class="parts-filter">
+  <input type="text" id="partsSearch" placeholder="🔍 Поиск: имя, размер (100x50), кол-во, длина...">
+  <label class="parts-filter-check">
+    <input type="checkbox" id="partsFilterUnplaced">
+    Только неразложенные
+  </label>
+  <span id="partsFilterInfo" class="parts-filter-info"></span>
+</div>
 <div id="partsTableWrap">
 <div class="empty">Файлы не добавлены. Перетащите DXF сюда.</div></div>
 <div class="batch-bar">
@@ -158,18 +182,32 @@
 
 <div id="report">—</div>
 </aside>
-<main id="main">
-<canvas id="canvas"></canvas>
-<div id="canvasHint">ЛКМ на пустом — рамка выделения · ЛКМ на детали — тащить · Shift+рамка — добавить · R/Z — поворот/зеркало · Delete — убрать · Esc — снять выделение · Alt — шаг сетки</div>
-<div id="progressOverlay">
-<div class="progress-card">
-<div class="spinner"></div>
-<div class="progress-title">Идёт расчёт раскладки</div>
-<div class="progress-sub" id="progressSub">Подготовка...</div>
-<div class="progress-bar-track"><div class="progress-bar-fill" id="progressFill"></div></div>
-<div class="progress-pct" id="progressPct">0%</div>
-<button id="btnCancelNest" class="progress-cancel-btn">✕ Отменить раскладку</button>
-</div></div>
+<main id="main" style="display: flex; flex-direction: column; flex: 1; min-width: 0; background: #2b2b2b;">
+  
+  <!-- Панель координат (над холстом) -->
+  <div id="coordsPanel" style="background: #1e1e1e; border-bottom: 1px solid #4a7fb5; padding: 8px 12px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; color: #fff; font-size: 13px; z-index: 10;">
+    <div style="font-weight: bold; color: #cfe4ff; font-size: 12px; border-right: 1px solid #4a7fb5; padding-right: 12px;">📐 Координаты</div>
+    <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff;">X: <input id="coordX" type="number" step="1" style="width: 60px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
+    <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff;">Y: <input id="coordY" type="number" step="1" style="width: 60px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
+    <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff;">∠: <input id="coordAngle" type="number" step="90" style="width: 60px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
+  </div>
+
+  <!-- Обертка для холста -->
+  <div style="position: relative; flex: 1; min-height: 0;">
+    <canvas id="canvas"></canvas>
+    <div id="canvasHint">ЛКМ на пустом — рамка выделения · ЛКМ на детали — тащить · Shift+рамка — добавить · R/Z — поворот/зеркало · Delete — убрать · Esc — снять выделение · Alt — шаг сетки · Пробел — Показать всё</div>
+  </div>
+
+  <div id="progressOverlay">
+    <div class="progress-card">
+      <div class="spinner"></div>
+      <div class="progress-title">Идёт расчёт раскладки</div>
+      <div class="progress-sub" id="progressSub">Подготовка...</div>
+      <div class="progress-bar-track"><div class="progress-bar-fill" id="progressFill"></div></div>
+      <div class="progress-pct" id="progressPct">0%</div>
+      <button id="btnCancelNest" class="progress-cancel-btn">✕ Отменить раскладку</button>
+    </div>
+  </div>
 </main>
 </div>
 </div>
@@ -221,13 +259,13 @@
 </div>
 
 <div class="modal-overlay" id="reportModal">
-<div class="modal-window" style="width:640px">
+<div class="modal-window" style="width:560px; max-width:95vw;">
 <div class="modal-header" style="background:#eaf4ff;border-bottom-color:#c9e0f5;color:#004a99">
 <span>ℹ Информация о раскладке</span>
 <button class="close-btn" id="btnCloseReport" title="Закрыть" style="color:#004a99">✕</button>
 </div>
 <div class="modal-body">
-<div id="reportContent" style="font-size:13px;color:#333;white-space:pre-line;line-height:1.6">—</div>
+<div id="reportContent" style="font-size:16px;color:#333;line-height:1.5">—</div>
 </div>
 <div class="modal-footer">
 <button id="btnCloseReport2">Закрыть</button>
@@ -289,14 +327,91 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="remnantCatalogModal">
+  <div class="modal-window" style="width:760px;max-width:calc(100vw - 40px)">
+    <div class="modal-header" style="background:#eaf9ec;border-bottom-color:#9ed5a4;color:#1a6a25">
+      <span>📚 Каталог остатков</span>
+      <button class="close-btn" id="btnCloseRemnantCatalog" title="Закрыть" style="color:#1a6a25">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="remnant-catalog-toolbar">
+        <input type="text" id="remnantCatalogSearch" placeholder="🔍 Поиск: размер (300x200), площадь, лист...">
+        <span class="remnant-catalog-stats" id="remnantCatalogStats"></span>
+      </div>
+      <div class="remnant-catalog-list" id="remnantCatalogList"></div>
+      <div class="hint" style="margin-top:8px">
+        📍 — показать на холсте · 💾 — сохранить в DXF · 🗑 — удалить (только ручные остатки)
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button id="btnCloseRemnantCatalog2">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reportsChoiceModal">
+  <div class="modal-window" style="width:480px">
+    <div class="modal-header" style="background:#eaf4ff;border-bottom-color:#c9e0f5;color:#004a99">
+      <span>📄 Отчёты и печать</span>
+      <button class="close-btn" id="btnCloseReportsChoice" title="Закрыть" style="color:#004a99">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="reports-choice-list">
+        <button id="btnPrintReport" class="reports-choice-btn">
+          <span class="rc-icon">🖨</span>
+          <div class="rc-text">
+            <b>Печать отчёта</b>
+            <div class="rc-desc">Список деталей, параметры, КПД — A4 портрет</div>
+          </div>
+        </button>
+        <button id="btnPrintLayout" class="reports-choice-btn">
+          <span class="rc-icon">🗺</span>
+          <div class="rc-text">
+            <b>Печать карты</b>
+            <div class="rc-desc">Схема раскладки по листам — A4 альбом</div>
+          </div>
+        </button>
+
+            <button id="btnExportCsv" class="reports-choice-btn">
+              <span class="rc-icon">📊</span>
+              <div class="rc-text">
+                <b>Экспорт в CSV</b>
+                <div class="rc-desc">Спецификация для Excel (с координатами)</div>
+              </div>
+            </button>        
+		
+		<button id="btnSaveHtml" class="reports-choice-btn">
+          <span class="rc-icon">🖼</span>
+          <div class="rc-text">
+            <b>Отчёт JPG</b>
+            <div class="rc-desc">Отчёт в виде изображения</div>
+          </div>
+        </button>
+        <button id="btnSaveJpgSheets" class="reports-choice-btn">
+          <span class="rc-icon">🖼</span>
+          <div class="rc-text">
+            <b>Карта JPG</b>
+            <div class="rc-desc">Изображения листов по одному</div>
+          </div>
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button id="btnCloseReportsChoice2">Закрыть</button>
+    </div>
+  </div>
+</div>
+
 <div id="contextMenu" class="context-menu"></div>
 <div id="dropOverlay">Отпустите DXF-файлы для загрузки</div>
 <div id="printArea"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/dxf-parser@1.1.2/dist/dxf-parser.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-
+<!-- Локальные библиотеки из папки js/lib/ -->
+<script src="js/lib/dxf-parser.js"></script>
+<script src="js/lib/qrcode.js"></script>
+<script src="js/lib/JsBarcode.all.min.js"></script>
+<script src="js/lib/jspdf.umd.min.js"></script>
+<script src="js/lib/html2canvas.min.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
