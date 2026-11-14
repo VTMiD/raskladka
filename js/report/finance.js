@@ -1,5 +1,5 @@
-// js/finance.js
-import { setStatus } from './utils.js';
+// js/report/finance.js
+import { setStatus } from '../utils.js';
 
 const FINANCE_KEY = 'raskladka.finance.v1';
 

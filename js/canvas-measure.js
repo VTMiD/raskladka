@@ -1,5 +1,5 @@
 import { canvas, screenToWorld, DEFAULT_HINT } from './canvas-core.js';
-import { draw } from './canvas-draw.js';
+import { draw } from './canvas/render.js';
 import { state } from './state.js';
 import { setStatus } from './utils.js';
 

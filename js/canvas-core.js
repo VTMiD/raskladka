@@ -5,7 +5,8 @@ import { pointInRing, polysCollide, isPartInsideSheetPolygon } from './geometry.
 export const canvas = document.getElementById('canvas');
 export const ctx = canvas.getContext('2d');
 
-export const DEFAULT_HINT = 'ЛКМ на пустом — рамка выделения · ЛКМ на детали — тащить · Shift+рамка — добавить · R/Z — поворот/зеркало · Delete — убрать · Esc — снять выделение · Alt — шаг сетки';
+// Обновленная подсказка с учетом Shift/Ctrl
+export const DEFAULT_HINT = 'ЛКМ — выделить · Shift+клик / Ctrl+клик — добавить/убрать · Shift+рамка — добавить рамкой · ЛКМ на детали — тащить · R/Z — поворот/зеркало · Delete — убрать · Esc — снять всё · Alt — шаг сетки';
 
 export function screenToWorld(px, py){
   const v = state.view; if(!v) return null;

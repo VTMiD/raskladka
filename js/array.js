@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { readParams } from './params.js';
 import { rotatePart } from './geometry.js';
 import { draw } from './canvas.js';
-import { updateReport } from './report.js';
+import { updateReport } from './report/report.js';
 import { setStatus } from './utils.js';
 import { refreshPartsStatus } from './part-status.js';
 import { pushHistory } from './history.js';

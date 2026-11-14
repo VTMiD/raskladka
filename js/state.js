@@ -46,7 +46,23 @@ export const state = {
   layers: [
     { id: 1, name: 'Детали', color: '#ff5555', order: 1, visible: true },
     { id: 2, name: 'Рез остатка', color: '#2a9a3c', order: 2, visible: true }
-  ]
+  ],
+
+  // ─── ПАЛИТРЫ ТЕМ (Цвета по умолчанию) ───
+  themes: {
+    sheetcam: {
+      bg: '#3a3a3a',      // Фон за холстом (стол)
+      sheet: '#2a0505',   // Фон листа (подложка)
+      text: '#ffffff',    // Цвет текста
+      accent: '#ff8c00'   // Акцентный цвет (кнопки, рамки)
+    },
+    default: {
+      bg: '#2b2b2b',
+      sheet: '#2b2b2b',
+      text: '#cccccc',
+      accent: '#ff8c00'
+    }
+  }
 };
 
 export function getActiveJob(){

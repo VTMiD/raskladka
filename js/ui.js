@@ -12,7 +12,7 @@ import { requestCancel } from './progress.js';
 import { pushHistory } from './history.js';
 import { initSplash } from './splash.js';
 import { openStampSettingsModal } from './report/sheet-stamp-settings.js';
-import { exportSpecToCSV } from './report/report-csv.js'; // <--- ДОБАВЛЕНО
+import { exportSpecToCSV } from './report/report-csv.js';
 
 (function injectGlobalStyles() {
     if (document.getElementById('customDropdownStyles')) return;
@@ -31,180 +31,17 @@ import { exportSpecToCSV } from './report/report-csv.js'; // <--- ДОБАВЛЕ
     .dropdown-sep { height: 1px; background: #e0e0e0; margin: 4px 0; }
     @media print { .dropdown-menu { display: none !important; } }
 
-    .test-labels-wrap { font-family: 'Times New Roman', Times, serif; color: #000; }
-    .test-labels-header { text-align: center; margin-bottom: 4mm; }
-    .test-labels-header h1 { font-size: 18px; margin: 0 0 2px; }
-    .test-labels-meta { font-size: 12px; color: #555; }
-    .test-labels-page { width: 100%; padding: 8mm; box-sizing: border-box; display: flex; flex-direction: column; gap: 6mm; }
-    .test-label {
-      width: 100%; box-sizing: border-box;
-      border: 2px solid #000; border-radius: 4px; padding: 6mm;
-      display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
-    }
-    .test-label-name { font-size: 22px; font-weight: bold; margin-bottom: 4mm; word-break: break-word; }
-    .test-label-qr { width: 80mm; height: 80mm; margin: 0 auto 4mm; }
-    .test-label-qr svg { width: 100%; height: 100%; display: block; }
-    .test-label-info { font-size: 16px; margin-bottom: 2mm; }
-    .test-label-date { font-size: 12px; color: #666; }
-
-    #qrScanModal { z-index: 2000; }
-    #qrScanModal video { background: #000; }
-
-    .part-labels-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 5mm;
-      padding: 0 5mm;
-    }
-    .part-label-card {
-      border: 2px solid #000;
-      border-radius: 6px;
-      padding: 4mm;
-      display: flex;
-      flex-direction: column;
-      background: #fff;
-      page-break-inside: avoid;
-      break-inside: avoid;
-      box-sizing: border-box;
-      height: 125mm;
-    }
-    .part-label-header {
-      text-align: center;
-      width: 100%;
-      margin-bottom: 2mm;
-      border-bottom: 1.5px solid #000;
-      padding-bottom: 2mm;
-      flex-shrink: 0;
-    }
-    .part-label-title {
-      font-size: 12px;
-      font-weight: bold;
-      color: #fff;
-      background: #000;
-      display: inline-block;
-      padding: 1mm 6mm;
-      border-radius: 3px;
-      margin-bottom: 1mm;
-    }
-    .part-label-name {
-      font-size: 18px;
-      font-weight: bold;
-      word-break: break-all;
-      line-height: 1.1;
-    }
-    .part-label-content {
-      display: flex;
-      width: 100%;
-      gap: 4mm;
-      align-items: center;
-      flex: 1 1 auto;
-      margin-bottom: 2mm;
-    }
-    .part-label-qr {
-      width: 52mm;
-      height: 52mm;
-      flex-shrink: 0;
-    }
-    .part-label-qr svg {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-    .part-label-details {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      gap: 2mm;
-      min-width: 0;
-    }
-    .part-label-dims {
-      font-size: 16px;
-      font-weight: bold;
-      color: #004a99;
-      line-height: 1.1;
-    }
-    .part-label-info {
-      font-size: 12px;
-      color: #333;
-      line-height: 1.2;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .part-label-info b {
-      color: #000;
-      font-size: 14px;
-    }
-    .part-label-date {
-      font-size: 10px;
-      color: #666;
-      text-align: right;
-      flex-shrink: 0;
-      border-top: 1px solid #eee;
-      padding-top: 1mm;
-    }
-
-    .gear-btn-wrapper {
-      position: relative;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .unread-dot {
-      position: absolute;
-      top: 0px;
-      right: 0px;
-      width: 8px;
-      height: 8px;
-      background: #ff3b30;
-      border-radius: 50%;
-      display: none;
-    }
-    .unread-dot.active {
-      display: block;
-    }
-    .status-modal-list {
-      max-height: 400px;
-      overflow-y: auto;
-      background: #f9f9f9;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      padding: 8px;
-    }
-    .status-item {
-      padding: 6px 8px;
-      border-bottom: 1px solid #eee;
-      font-size: 13px;
-      display: flex;
-      gap: 10px;
-    }
+    .gear-btn-wrapper { position: relative; display: flex; align-items: center; gap: 6px; }
+    .unread-dot { position: absolute; top: 0px; right: 0px; width: 8px; height: 8px; background: #ff3b30; border-radius: 50%; display: none; }
+    .unread-dot.active { display: block; }
+    .status-modal-list { max-height: 400px; overflow-y: auto; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px; padding: 8px; }
+    .status-item { padding: 6px 8px; border-bottom: 1px solid #eee; font-size: 13px; display: flex; gap: 10px; }
     .status-item:last-child { border-bottom: none; }
-    .status-time {
-      color: #888;
-      font-size: 11px;
-      white-space: nowrap;
-      font-family: monospace;
-    }
+    .status-time { color: #888; font-size: 11px; white-space: nowrap; font-family: monospace; }
     .status-text { flex: 1; word-break: break-word; }
-
-    #fixBar .tools-group {
-      margin-left: auto;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-
-    #topbar {
-      flex-wrap: wrap !important;
-      overflow-x: hidden !important;
-    }
-    #fixBar {
-      flex-basis: 100% !important;
-      flex-wrap: nowrap !important;
-      overflow-x: auto !important;
-    }
-
+    #fixBar .tools-group { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    #topbar { flex-wrap: wrap !important; overflow-x: hidden !important; }
+    #fixBar { flex-basis: 100% !important; flex-wrap: nowrap !important; overflow-x: auto !important; }
     .path-settings-modal .modal-body { display: flex; flex-direction: column; gap: 12px; }
     .path-settings-modal label { font-weight: 600; font-size: 13px; color: #333; display: block; margin-bottom: 4px; }
     .path-settings-modal input[type="text"] { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; font-family: monospace; }
@@ -508,8 +345,8 @@ function initTopbarUI() {
             { type: 'sep' },
             { action: 'set-paths', icon: '📁', title: 'Настройки хранения данных', desc: 'Указать пути к папкам для деталей, листов, остатков и проектов' },
             { type: 'sep' },
-            { action: 'theme-default', icon: '🎨', title: 'Тема: Стандартная', desc: 'Тёмный фон, красные контуры' },
-            { action: 'theme-sheetcam', icon: '🎨', title: 'Тема: SheetCam', desc: 'Бордовый фон, белые детали, синий маршрут' },
+            { action: 'theme-default', icon: '🎨', title: 'Тема: Классическая', desc: 'Тёмный фон, красные контуры' },
+            { action: 'theme-sheetcam', icon: '🎨', title: 'Тема: SheetCam', desc: 'Коричневый лист, белые детали' },
             { type: 'sep' },
             { action: 'toggle-splash', icon: '🎬', title: 'Заставка при старте', desc: 'Показывать анимацию запуска', type: 'checkbox', checked: localStorage.getItem('raskladka.splashEnabled') !== 'false' },
             { action: 'test-splash', icon: '▶', title: 'Тест заставки', desc: 'Проиграть анимацию запуска сейчас' }
@@ -756,7 +593,6 @@ function bindToolButtons() {
         });
     });
 
-    // ═══ НОВАЯ КНОПКА: Экспорт в CSV ═══
     const btnExportCsv = document.getElementById('btnExportCsv');
     if (btnExportCsv) {
         btnExportCsv.addEventListener('click', () => {
