@@ -1,5 +1,5 @@
 // js/main.js — точка входа.
-import { $, sleep, setStatus } from './utils.js';
+import { $, sleep, setStatus, probeServer, applyServerGating, isServerAvailable } from './utils.js';
 import { state, createJob, getActiveJob, HAS_OPEN_PICKER } from './state.js';
 import { readParams } from './params.js';
 import { nest, computeRemnants } from './nesting.js';
@@ -24,7 +24,7 @@ import { bindFixingUI } from './fixing.js';
 import { bindRemnantCatalogUI } from './remnant-catalog.js';
 import { initProjectIO } from './project-io.js';
 import { initAutosave } from './autosave.js';
-import { initUI } from './ui.js';
+import { initUI, syncSavedPathsToServer } from './ui.js';
 import { initDialogs } from './dialogs/dialogs.js'; 
 import { installProjectHooks } from './project-hooks.js';
 import { bindLayersUI } from './layers.js';
@@ -184,6 +184,13 @@ if (typeof DxfParser === 'undefined') {
 if (!HAS_OPEN_PICKER) setStatus('⚠ Запоминание папки — только Chrome/Edge.');
 
 console.log('[init] Приложение запущено');
+
+// Определяем, запущен ли локальный сервер (server.js), и блокируем серверные функции.
+// Выполняется после инициализации UI, чтобы пункты меню уже существовали в DOM.
+probeServer().then(() => {
+  applyServerGating();
+  if (isServerAvailable()) syncSavedPathsToServer();
+}).catch(() => {});
 // ═══ ВРЕМЕННАЯ ВСТАВКА КНОПКИ CSV В МЕНЮ ОТЧЁТОВ ═══
 setTimeout(() => {
   const btnReports = [...document.querySelectorAll('button')].find(b => b.textContent.includes('Отчёты'));

@@ -1,5 +1,5 @@
 // js/parts-add.js
-import { $, escapeHtml, setStatus } from './utils.js';
+import { $, escapeHtml, setStatus, isServerAvailable } from './utils.js';
 import { state, HAS_OPEN_PICKER, FS_IDS } from './state.js';
 import { parseDxfText } from './dxf-import.js';
 import { draw } from './canvas.js';
@@ -151,7 +151,9 @@ export async function openAddPartsModal() {
     listData = data;
     if (data.note) listError = data.note;
   } catch (e) {
-    listError = e.message;
+    listError = isServerAvailable()
+      ? e.message
+      : 'Сервер не запущен — список файлов из папки недоступен. Используйте «📂 Выбрать другие файлы…» или перетащите DXF-файлы в окно.';
   }
 
   const modal = document.createElement('div');

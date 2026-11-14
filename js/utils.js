@@ -22,6 +22,66 @@ export function setStatus(msg) {
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+// Доступность локального сервера (server.js)
+// На хостинге без запущенного server.js часть функций недоступна.
+// ════════════════════════════════════════════════════════════════
+export const SERVER_TIP = 'Работает только при запущенном локальном сервере (server.js)';
+let __serverAvailable = null;
+
+export async function probeServer() {
+  if (__serverAvailable !== null) return __serverAvailable;
+  try {
+    const res = await fetch('/api/ping', { cache: 'no-store' });
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    // Важно: некоторые хостинги отдают index.html с кодом 200 на любой путь
+    if (!res.ok || !ct.includes('application/json')) throw new Error('no-server');
+    const data = await res.json();
+    __serverAvailable = !!(data && data.ok);
+  } catch (_) {
+    __serverAvailable = false;
+  }
+  return __serverAvailable;
+}
+
+export function isServerAvailable() {
+  return __serverAvailable === true;
+}
+
+// Помечает серверные контролы атрибутом data-server-only: без сервера они
+// блокируются (клик не срабатывает, появляется подсказка на наведении).
+export function applyServerGating(root = document) {
+  const ok = isServerAvailable();
+  root.querySelectorAll('[data-server-only]').forEach(el => {
+    if (ok) {
+      el.classList.remove('so-disabled');
+      el.removeAttribute('aria-disabled');
+      if (el.dataset.soOrigTitle !== undefined) el.setAttribute('title', el.dataset.soOrigTitle);
+      return;
+    }
+    el.classList.add('so-disabled');
+    el.setAttribute('aria-disabled', 'true');
+    if (el.dataset.soOrigTitle === undefined) {
+      el.dataset.soOrigTitle = el.getAttribute('title') || '';
+    }
+    el.setAttribute('title', '⚠ ' + SERVER_TIP + (el.dataset.serverTip ? '. ' + el.dataset.serverTip : ''));
+  });
+
+  if (!applyServerGating._bound) {
+    applyServerGating._bound = true;
+    // Capture-фаза: перехватываем клик по серверному элементу до его обработчиков
+    document.addEventListener('click', (e) => {
+      if (isServerAvailable()) return;
+      const t = e.target;
+      const hit = (t && t.closest) ? t.closest('[data-server-only]') : null;
+      if (!hit) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setStatus('⚠ ' + SERVER_TIP + (hit.dataset.serverTip ? '. ' + hit.dataset.serverTip : ''));
+    }, true);
+  }
+}
+
 // ─── Имена отчётов (запоминание последнего) ────────────────────
 const REPORT_NAMES_KEY = 'raskladka.reportNames.v1';
 
@@ -133,6 +193,8 @@ export function downloadBlob(blob, fileName, revokeDelayMs = 2000) {
 
 // ─── Сохранение файла через локальный сервер ────────────────
 export async function saveFileToServer(category, subfolder, fileName, content, isBase64) {
+  // Без сервера не стучимся в сеть — вызывающий код уйдёт в браузерный fallback
+  if (!isServerAvailable()) return { ok: false, error: 'no-server' };
   try {
     const res = await fetch('/api/save-file', {
       method: 'POST',

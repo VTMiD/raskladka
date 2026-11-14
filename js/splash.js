@@ -1,8 +1,10 @@
 // js/splash.js
 let globalAudioCtx = null; // Глобальный контекст, чтобы не создавать его заново
 
-export function initSplash() {
-  if (localStorage.getItem('raskladka.splashEnabled') === 'false') return;
+export function initSplash(force = false) {
+  // По умолчанию заставка выключена: показываем только если её явно включили,
+  // либо при принудительном запуске (пункт «Тест заставки»).
+  if (!force && localStorage.getItem('raskladka.splashEnabled') !== 'true') return;
 
   const mainContainer = document.getElementById('main');
   if (!mainContainer) return;
@@ -222,7 +224,7 @@ export function initSplash() {
             splash.remove();
             const s = document.getElementById('plasma-splash-styles');
             if (s) s.remove();
-            initSplash();
+            initSplash(true);
           });
         };
       }

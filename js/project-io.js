@@ -1,5 +1,5 @@
 // js/project-io.js
-import { setStatus, downloadBlob } from './utils.js';
+import { setStatus, downloadBlob, isServerAvailable } from './utils.js';
 import { state } from './state.js';
 
 const APP_ID = 'dxf-nesting';
@@ -111,6 +111,13 @@ async function onSave(){
     }
 
     const fileName = buildFileName();
+
+    // Без локального сервера сохранить в папку нельзя — отдаём файл в Загрузки.
+    if (!isServerAvailable()) {
+      downloadLocally(json, fileName);
+      setStatus(`Сервер не запущен — проект скачан: ${fileName}`);
+      return;
+    }
 
     try {
       const chk = await fetch('/api/file-exists', {

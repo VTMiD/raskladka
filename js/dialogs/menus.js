@@ -242,7 +242,7 @@ function setupTools() {
         id: 'toolsDropdown', triggerBtn: newBtn,
         items: [
             { action: 'scan-qr', icon: '📷', title: 'Сканировать QR', desc: 'Считать параметры листа или загрузить деталь/проект', hotkey: 'Ctrl+Q' },
-            { action: 'import-list', icon: '📋', title: 'Импорт из списка', desc: 'Вставить номера деталей из мессенджера' },
+            { action: 'import-list', icon: '📋', title: 'Импорт из списка', desc: 'Вставить номера деталей из мессенджера', serverOnly: true, serverTip: 'Детали ищутся в папке «Детали» на сервере.' },
             { type: 'sep' },
             { action: 'autofit', icon: '🎯', title: 'Подбор заготовки', desc: 'Автоматический подбор размера листа' },
             { action: 'catalog', icon: '📚', title: 'Каталог остатков', desc: 'Список остатков со всех листов' },

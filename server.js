@@ -62,6 +62,11 @@ const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   let urlPath = decodeURIComponent(parsedUrl.pathname);
 
+  // Проба доступности локального сервера (используется фронтендом)
+  if (urlPath === '/api/ping' && req.method === 'GET') {
+    return jsonResponse(res, 200, { ok: true, app: 'raskladka', server: true });
+  }
+
   if (urlPath === '/api/set-paths' && req.method === 'POST') {
     try {
       const data = await readJsonBody(req);

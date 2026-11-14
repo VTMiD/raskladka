@@ -1,5 +1,5 @@
 // js/ui.js
-import { $, setStatus } from './utils.js';
+import { $, setStatus, isServerAvailable } from './utils.js';
 import { state } from './state.js';
 import { draw, resetCamera } from './canvas.js';
 import { updateStockMiniInfo } from './params.js';
@@ -59,16 +59,17 @@ export function createDropdownMenu({ id, triggerBtn, items, onAction }) {
         dropdown.className = 'dropdown-menu';
         dropdown.style.display = 'none';
         dropdown.innerHTML = items.map(item => {
+            const soAttrs = `${item.serverOnly ? ' data-server-only' : ''}${item.serverTip ? ` data-server-tip="${item.serverTip}"` : ''}`;
             if (item.type === 'sep') return '<div class="dropdown-sep"></div>';
             if (item.type === 'checkbox') {
-                return `<div class="dropdown-item" data-action="${item.action}" title="${item.title}">
+                return `<div class="dropdown-item" data-action="${item.action}" title="${item.title}"${soAttrs}>
           <span class="dd-icon">${item.icon}</span>
           <div class="dd-text"><b>${item.title}</b></div>
           <input type="checkbox" class="dd-checkbox" ${item.checked ? 'checked' : ''}>
         </div>`;
             }
             const titleAttr = item.hotkey ? `${item.title} (${item.hotkey})` : item.title;
-            return `<div class="dropdown-item" data-action="${item.action}" title="${titleAttr}">
+            return `<div class="dropdown-item" data-action="${item.action}" title="${titleAttr}"${soAttrs}>
         <span class="dd-icon">${item.icon}</span>
         <div class="dd-text"><b>${item.title}</b><div class="dd-desc">${item.desc}</div></div>
       </div>`;
@@ -343,12 +344,12 @@ function initTopbarUI() {
         items: [
             { action: 'stamp-settings', icon: '📐', title: 'Данные для штампа', desc: 'ФИО подписантов, материал, литера' },
             { type: 'sep' },
-            { action: 'set-paths', icon: '📁', title: 'Настройки хранения данных', desc: 'Указать пути к папкам для деталей, листов, остатков и проектов' },
+            { action: 'set-paths', icon: '📁', title: 'Настройки хранения данных', desc: 'Указать пути к папкам для деталей, листов, остатков и проектов', serverOnly: true, serverTip: 'Пути используются для сохранения файлов на диск.' },
             { type: 'sep' },
             { action: 'theme-default', icon: '🎨', title: 'Тема: Классическая', desc: 'Тёмный фон, красные контуры' },
             { action: 'theme-sheetcam', icon: '🎨', title: 'Тема: SheetCam', desc: 'Коричневый лист, белые детали' },
             { type: 'sep' },
-            { action: 'toggle-splash', icon: '🎬', title: 'Заставка при старте', desc: 'Показывать анимацию запуска', type: 'checkbox', checked: localStorage.getItem('raskladka.splashEnabled') !== 'false' },
+            { action: 'toggle-splash', icon: '🎬', title: 'Заставка при старте', desc: 'Показывать анимацию запуска', type: 'checkbox', checked: localStorage.getItem('raskladka.splashEnabled') === 'true' },
             { action: 'test-splash', icon: '▶', title: 'Тест заставки', desc: 'Проиграть анимацию запуска сейчас' }
         ],
         onAction: (action, isChecked) => {
@@ -367,13 +368,13 @@ function initTopbarUI() {
                 setStatus(isChecked ? 'Заставка включена' : 'Заставка выключена');
             }
             else if (action === 'test-splash') {
-                initSplash();
+                initSplash(true);
             }
         },
     });
 
     const savedPaths = localStorage.getItem(PATHS_KEY);
-    if (savedPaths) {
+    if (savedPaths && isServerAvailable()) {
         try {
             const paths = JSON.parse(savedPaths);
             if (paths.parts || paths.sheets || paths.remnants || paths.projects || paths.shop) {
@@ -385,6 +386,24 @@ function initTopbarUI() {
             }
         } catch (_) {}
     }
+}
+
+// Отправляет сохранённые в localStorage пути на сервер.
+// Вызывается из main.js после успешной пробы сервера (см. probeServer).
+export function syncSavedPathsToServer() {
+    if (!isServerAvailable()) return;
+    const saved = localStorage.getItem(PATHS_KEY);
+    if (!saved) return;
+    try {
+        const paths = JSON.parse(saved);
+        if (paths.parts || paths.sheets || paths.remnants || paths.projects || paths.shop) {
+            fetch('/api/set-paths', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(paths),
+            }).catch(console.error);
+        }
+    } catch (_) {}
 }
 
 let activeHelpBtn = null, activeHelpTip = null;

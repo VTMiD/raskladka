@@ -904,3 +904,11 @@ tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.65; transform: scale(1.03); }
 }
+
+/* ─── Функции, недоступные без локального сервера (js/utils.js → applyServerGating) ─── */
+.so-disabled {
+  opacity: 0.45 !important;
+  filter: grayscale(1);
+  cursor: not-allowed !important;
+}
+.so-disabled:hover { opacity: 0.6 !important; }

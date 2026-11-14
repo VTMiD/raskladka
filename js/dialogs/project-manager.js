@@ -1,6 +1,6 @@
 // js/dialogs/project-manager.js
 import { state } from '../state.js';
-import { setStatus } from '../utils.js';
+import { setStatus, isServerAvailable } from '../utils.js';
 import { makeQrSvg } from '../qr-barcode.js';
 import { buildDefaultFileName, getCurrentProjectName, buildProjectName, setCurrentProjectName } from '../project-io.js';
 
@@ -64,6 +64,12 @@ async function showProjectPickerDialog(expectedName, availableFiles) {
 }
 
 export async function loadProjectFromServer(fileName, resultEl) {
+    if (!isServerAvailable()) {
+        const msg = '⚠ Открытие проектов по имени доступно только при запущенном локальном сервере.';
+        setStatus(msg);
+        if (resultEl) { resultEl.textContent = msg; resultEl.style.color = '#b00'; }
+        return;
+    }
     resultEl.textContent = `Поиск проекта: ${fileName}...`;
     resultEl.style.color = '#555';
 
@@ -223,12 +229,14 @@ export function generateProjectQr(projectName) {
     // Вставляем SVG
     document.getElementById('qrProjContainer').innerHTML = qrSvg;
 
-    // Сохраняем QR в папку Q-KOD на сервере
-    fetch('/api/save-file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: 'projects', subfolder: 'Q-KOD', fileName: projectName.replace(/\.json$/i, '') + '.svg', content: qrSvg }),
-    }).catch(console.error);
+    // Сохраняем QR в папку Q-KOD на сервере (только если сервер запущен)
+    if (isServerAvailable()) {
+        fetch('/api/save-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category: 'projects', subfolder: 'Q-KOD', fileName: projectName.replace(/\.json$/i, '') + '.svg', content: qrSvg }),
+        }).catch(console.error);
+    }
 
     const close = () => modal.remove();
     document.getElementById('btnCloseQrProj').onclick = close;

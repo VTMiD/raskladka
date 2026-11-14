@@ -1,6 +1,6 @@
 // js/dialogs/qr-scanner.js
 import { state, profilesStore, genId } from '../state.js';
-import { setStatus } from '../utils.js';
+import { setStatus, isServerAvailable } from '../utils.js';
 import { parseDxfText } from '../dxf-import.js';
 import { readParams, saveProfiles, renderProfileSelect, updateSumGap, updateActiveProfileFromFields } from '../params.js';
 import { draw, resetCamera } from '../canvas.js';
@@ -26,6 +26,12 @@ function playBeep() {
 }
 
 async function loadPartFromFolder(fileName, resultEl) {
+    if (!isServerAvailable()) {
+        const msg = '⚠ Загрузка детали по QR доступна только при запущенном локальном сервере (папка «Детали»).';
+        setStatus(msg);
+        if (resultEl) resultEl.textContent = msg;
+        return;
+    }
     const fullName = fileName.toLowerCase().endsWith('.dxf') ? fileName : fileName + '.dxf';
     try {
         const response = await fetch('/api/get-dxf?name=' + encodeURIComponent(fullName));
