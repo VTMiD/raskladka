@@ -191,43 +191,7 @@ probeServer().then(() => {
   applyServerGating();
   if (isServerAvailable()) syncSavedPathsToServer();
 }).catch(() => {});
-// ═══ ВРЕМЕННАЯ ВСТАВКА КНОПКИ CSV В МЕНЮ ОТЧЁТОВ ═══
-setTimeout(() => {
-  const btnReports = [...document.querySelectorAll('button')].find(b => b.textContent.includes('Отчёты'));
-  
-  if (btnReports) {
-    btnReports.addEventListener('click', () => {
-      // Ждем 50 мс, пока меню отрисуется
-      setTimeout(() => {
-        // Ищем выпадающее меню (оно появляется в body)
-        const menus = document.querySelectorAll('body > div');
-        for (const menu of menus) {
-          if (menu.style.display === 'block' && menu.textContent.includes('HTML-плеер')) {
-            // Проверяем, нет ли уже нашей кнопки, чтобы не дублировать
-            if (menu.querySelector('.csv-injected')) return;
 
-            const csvBtn = document.createElement('div');
-            csvBtn.className = menu.querySelector('.dropdown-item, button')?.className || '';
-            csvBtn.classList.add('csv-injected');
-            csvBtn.style.cssText = 'display:flex; align-items:center; gap:12px; padding:8px 14px; cursor:pointer; border-top:1px solid #eee;';
-            csvBtn.innerHTML = `
-              <span style="font-size:20px; width:24px; text-align:center;">📊</span>
-              <div style="flex:1;">
-                <b style="display:block; font-size:13px; color:#004a99;">Экспорт в CSV</b>
-                <div style="font-size:11px; color:#888;">— Спецификация для Excel</div>
-              </div>
-            `;
-            csvBtn.onclick = () => {
-              import('./report/report-csv.js').then(m => m.exportSpecToCSV());
-              menu.style.display = 'none';
-            };
-            menu.appendChild(csvBtn);
-          }
-        }
-      }, 50);
-    });
-  }
-}, 1000);
 
 initSplash();
 // Находим кнопку и привязываем к ней вызов модуля

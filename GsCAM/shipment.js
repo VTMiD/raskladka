@@ -8,14 +8,13 @@ import { sheetToGcode } from './sheet-to-gcode.js';
 import { getPost, DEFAULT_POST_ID } from './posts/index.js';
 import { buildLayoutHtml, buildReportHtml } from '../js/report/report.js';
 import { buildLabelsHtml } from '../js/report/labels.js';
+import { buildSpecificationHtml } from '../js/report/spec.js'; // <--- ДОБАВЛЕНО
 import { buildDxfAllSheets } from '../js/dxf-export.js';
 import { getCurrentProjectName, buildDefaultFileName } from '../js/project-io.js';
 import { getPlayerHtmlForSheet } from './export-player.js';
 import { generatePdfBlob } from '../js/dialogs/pdf-maker.js';
 import { generateJpgPages } from '../js/exports.js';
 import { makeQrSvg } from '../js/qr-barcode.js';
-
-// ═══ ИМПОРТ НАСТРОЕК И ПРОФИЛЕЙ ═══
 import { 
   getShipmentProfiles, saveProfile, loadProfile, deleteProfile, 
   saveLastState, loadLastState,
@@ -26,7 +25,7 @@ const PATHS_KEY = 'raskladka.paths.v1';
 
 const CHECKBOX_IDS = [
   'chk-gcode', 'chk-report', 'chk-player', 'chk-qr', 'chk-map', 'chk-dxf',
-  'chk-pdf-map', 'chk-pdf-report', 'chk-pdf-labels',
+  'chk-pdf-map', 'chk-pdf-report', 'chk-pdf-labels', 'chk-pdf-spec', // <--- ДОБАВЛЕНО
   'chk-jpg-map', 'chk-jpg-report', 'chk-jpg-labels'
 ];
 
@@ -113,8 +112,6 @@ export function openShipmentModal() {
         </div>
 
         <div style="margin-bottom:16px; background:#fff; padding:10px; border:1px solid #c9e0f5; border-radius:6px;">
-          
-          <!-- ═══ ВЫПАДАЮЩИЙ СПИСОК КОМПЛЕКТОВ ═══ -->
           <div style="display:flex; gap:10px; align-items:center; margin-bottom: 10px;">
             <div style="flex:1;">
               <label style="font-weight:600;font-size:13px;color:#004a99;display:block;margin-bottom:4px">
@@ -130,7 +127,6 @@ export function openShipmentModal() {
             </div>
           </div>
 
-          <!-- ═══ ПРЕФИКС ФАЙЛОВ ═══ -->
           <label style="font-weight:600;font-size:13px;color:#004a99;display:block;margin-bottom:4px">
             Имя файлов (префикс)
           </label>
@@ -183,15 +179,19 @@ export function openShipmentModal() {
               <div style="padding:6px 12px;">
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
                   <input type="checkbox" id="chk-pdf-map" data-role="pdf-map">
-                  <span>PDF Карта раскроя (со спецификацией)</span>
+                  <span>PDF Карта раскроя</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
+                  <input type="checkbox" id="chk-pdf-spec" data-role="pdf-spec">
+                  <span>PDF Спецификация</span>
                 </label>
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
                   <input type="checkbox" id="chk-pdf-report" data-role="pdf-report">
-                  <span>PDF Отчёт</span>
+                  <span>PDF Отчёт (полный)</span>
                 </label>
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
                   <input type="checkbox" id="chk-pdf-labels" data-role="pdf-labels">
-                  <span>PDF Этикетки (рекомендуется для печати)</span>
+                  <span>PDF Этикетки</span>
                 </label>
               </div>
             </div>
@@ -203,15 +203,15 @@ export function openShipmentModal() {
               <div style="padding:6px 12px;">
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
                   <input type="checkbox" id="chk-jpg-map" data-role="jpg-map" checked>
-                  <span>JPG Карта раскроя (по страницам)</span>
+                  <span>JPG Карта раскроя</span>
                 </label>
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
                   <input type="checkbox" id="chk-jpg-report" data-role="jpg-report">
-                  <span>JPG Отчёт (по страницам)</span>
+                  <span>JPG Отчёт</span>
                 </label>
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
                   <input type="checkbox" id="chk-jpg-labels" data-role="jpg-labels">
-                  <span>JPG Этикетки (по страницам)</span>
+                  <span>JPG Этикетки</span>
                 </label>
               </div>
             </div>
@@ -252,7 +252,6 @@ export function openShipmentModal() {
   };
   document.addEventListener('keydown', escH);
 
-  // ═══ ИНИЦИАЛИЗАЦИЯ ВЫПАДАЮЩЕГО СПИСКА ═══
   const profileSelect = q('#shipment-profile-select');
   const btnSaveProfile = q('#shipment-profile-save');
   const btnDeleteProfile = q('#shipment-profile-delete');
@@ -272,7 +271,6 @@ export function openShipmentModal() {
 
   updateProfileList();
   
-  // ═══ ЗАГРУЗКА ПОСЛЕДНЕГО ПРОФИЛЯ ═══
   const lastProfile = getLastSelectedProfile();
   if (lastProfile && getShipmentProfiles()[lastProfile]) {
     profileSelect.value = lastProfile;
@@ -310,7 +308,6 @@ export function openShipmentModal() {
     setStatus(`Комплект «${name}» удалён`);
   };
 
-  // ═══ ОСНОВНАЯ ЛОГИКА СБОРА ═══
   const progressBox  = q('[data-role="progress"]');
   const progressBar  = q('[data-role="progress-bar"]');
   const progressText = q('[data-role="progress-text"]');
@@ -337,6 +334,7 @@ export function openShipmentModal() {
       playerHtml: q('[data-role="include-player"]').checked,
       qr:         q('[data-role="include-qr"]').checked,
       mapPdf:     q('[data-role="pdf-map"]').checked,
+      specPdf:    q('[data-role="pdf-spec"]').checked,
       reportPdf:  q('[data-role="pdf-report"]').checked,
       labelsPdf:  q('[data-role="pdf-labels"]').checked,
       mapJpg:     q('[data-role="jpg-map"]').checked,
@@ -389,8 +387,6 @@ export function openShipmentModal() {
     }
   };
 }
-
-// ═══ ФУНКЦИИ СБОРА И СОХРАНЕНИЯ ФАЙЛОВ ═══
 
 async function buildShipmentFiles(base, fullProjectName, want, onProgress) {
   const params = readParams();
@@ -488,7 +484,7 @@ async function buildShipmentFiles(base, fullProjectName, want, onProgress) {
   if (want.mapPdf) {
     progress(0.22, 'PDF карта...');
     try {
-      const html = buildLayoutHtml({ includeSpec: true });
+      const html = buildLayoutHtml({ includeSpec: false });
       const blob = await generatePdfBlob(html, 'landscape');
       const base64 = await blobToBase64(blob);
       files.push({
@@ -500,8 +496,23 @@ async function buildShipmentFiles(base, fullProjectName, want, onProgress) {
     } catch (e) { console.warn('[shipment] PDF карта:', e); }
   }
 
+  if (want.specPdf) {
+    progress(0.35, 'PDF спецификация...');
+    try {
+      const html = buildSpecificationHtml();
+      const blob = await generatePdfBlob(html, 'portrait');
+      const base64 = await blobToBase64(blob);
+      files.push({
+        name: `${projectBase}_Spec.pdf`,
+        content: base64,
+        mime: 'application/pdf',
+        isBase64: true,
+      });
+    } catch (e) { console.warn('[shipment] PDF спецификация:', e); }
+  }
+
   if (want.reportPdf) {
-    progress(0.35, 'PDF отчёт...');
+    progress(0.48, 'PDF отчёт...');
     try {
       const html = buildReportHtml();
       const blob = await generatePdfBlob(html, 'landscape');
@@ -516,7 +527,7 @@ async function buildShipmentFiles(base, fullProjectName, want, onProgress) {
   }
 
   if (want.labelsPdf) {
-    progress(0.48, 'PDF этикетки...');
+    progress(0.55, 'PDF этикетки...');
     try {
       const html = buildLabelsHtml();
       const blob = await generatePdfBlob(html, 'portrait');
@@ -531,9 +542,9 @@ async function buildShipmentFiles(base, fullProjectName, want, onProgress) {
   }
 
   if (want.mapJpg) {
-    progress(0.60, 'JPG карта...');
+    progress(0.65, 'JPG карта...');
     try {
-      const html = buildLayoutHtml({ includeSpec: true });
+      const html = buildLayoutHtml({ includeSpec: false });
       const blobs = await generateJpgPages(html, 0.92);
       for (let i = 0; i < blobs.length; i++) {
         const base64 = await blobToBase64(blobs[i]);
@@ -548,7 +559,7 @@ async function buildShipmentFiles(base, fullProjectName, want, onProgress) {
   }
 
   if (want.reportJpg) {
-    progress(0.75, 'JPG отчёт...');
+    progress(0.80, 'JPG отчёт...');
     try {
       const html = buildReportHtml();
       const blobs = await generateJpgPages(html, 0.92);

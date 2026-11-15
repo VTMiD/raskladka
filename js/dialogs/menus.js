@@ -4,9 +4,9 @@ import { askFileNameWithPath, makeDestinationHint, setStatus } from '../utils.js
 import { createDropdownMenu } from '../ui.js';
 import { buildReportHtml, buildLayoutHtml, doPrint } from '../report/report.js';
 import { buildLabelsHtml, buildSheetLabelsHtml, buildRemnantLabelsHtml } from '../report/labels.js';
+import { buildSpecificationHtml } from '../report/spec.js';
 import { getCurrentProjectName, buildDefaultFileName } from '../project-io.js';
 
-// Импорты из наших новых модулей
 import { ensureProjectSaved, openSaveProjectDialog, loadProjectFromServer, openQrProjectDialog } from './project-manager.js';
 import { saveReportToFolder } from './pdf-maker.js';
 import { openQrScanner } from './qr-scanner.js';
@@ -51,18 +51,39 @@ function setupReports() {
         id: 'reportsDropdown',
         triggerBtn: btn,
         items: [
-            { action: 'save-report-pdf', icon: '📄', title: 'Сохранить отчёт PDF', desc: '→ Проекты\\Отчеты' },
+            // 1. Сначала КАРТА
             { action: 'save-map-pdf',    icon: '📄', title: 'Сохранить карту PDF', desc: '→ Проекты\\Отчеты' },
-            { action: 'save-report-jpg', icon: '🖼', title: 'Сохранить отчёт JPG', desc: '→ Картинка в загрузки' },
-            { action: 'save-map-jpg',    icon: '🖼', title: 'Сохранить карту JPG', desc: '→ Изображения листов по одному' },
+            // 2. Потом ОТЧЁТ
+            { action: 'save-report-pdf', icon: '📄', title: 'Сохранить отчёт PDF', desc: '→ Проекты\\Отчеты' },
+            // 3. Спецификация
+            { action: 'save-spec-pdf',   icon: '📊', title: 'Сохранить спецификацию PDF', desc: '→ Проекты\\Отчеты' },
             { type: 'sep' },
-            { action: 'save-player-html', icon: '🎬', title: 'Сохранить HTML-плеер', desc: 'Автономная симуляция резки' },
-            { type: 'sep' },
-            { action: 'print-report', icon: '🖨', title: 'Печать отчёта', desc: 'Диалог печати' },
+            // ПЕЧАТЬ
             { action: 'print-layout', icon: '🖨', title: 'Печать карты', desc: 'Диалог печати' },
+            { action: 'print-report', icon: '🖨', title: 'Печать отчёта', desc: 'Диалог печати' },
+            { action: 'print-spec',   icon: '🖨', title: 'Печать спецификации', desc: 'Диалог печати' },
+            
+            { type: 'sep' },
+            
+            // JPG
+            { action: 'save-map-jpg',    icon: '🖼', title: 'Сохранить карту JPG', desc: '→ Изображения листов по одному' },
+            { action: 'save-report-jpg', icon: '🖼', title: 'Сохранить отчёт JPG', desc: '→ Картинка в загрузки' },
+            
+            { type: 'sep' },
+            
+            { action: 'save-player-html', icon: '🎬', title: 'Сохранить HTML-плеер', desc: 'Автономная симуляция резки' },
+            { action: 'export-csv', icon: '📊', title: 'Экспорт в CSV', desc: 'Спецификация для Excel' },
         ],
         onAction: async (action) => {
-            if (action === 'save-report-pdf') {
+            if (action === 'save-map-pdf') {
+                if (!state.sheets.length) { alert('Сначала нажмите «Разложить»'); return; }
+                await ensureProjectSaved();
+                await saveReportToFolder({
+                    key: null, defaultName: makeProjectReportName('KartaRs'), dialogTitle: '📄 Сохранить карту PDF',
+                    html: buildLayoutHtml({ includeSpec: false }), orientation: 'landscape', category: 'projects', subfolder: 'Отчеты',
+                    destinationHint: makeDestinationHint('projects', 'Отчеты'),
+                });
+            } else if (action === 'save-report-pdf') {
                 if (!state.parts.length) { alert('Сначала добавьте детали'); return; }
                 await ensureProjectSaved();
                 await saveReportToFolder({
@@ -70,27 +91,20 @@ function setupReports() {
                     html: buildReportHtml(), orientation: 'portrait', category: 'projects', subfolder: 'Отчеты',
                     destinationHint: makeDestinationHint('projects', 'Отчеты'),
                 });
-            } else if (action === 'save-map-pdf') {
-                if (!state.sheets.length) { alert('Сначала нажмите «Разложить»'); return; }
+            } else if (action === 'save-spec-pdf') {
+                if (!state.parts.length) { alert('Сначала добавьте детали'); return; }
                 await ensureProjectSaved();
                 await saveReportToFolder({
-                    key: null, defaultName: makeProjectReportName('KartaRs'), dialogTitle: '📄 Сохранить карту PDF',
-                    html: buildLayoutHtml(), orientation: 'landscape', category: 'projects', subfolder: 'Отчеты',
+                    key: null, defaultName: makeProjectReportName('Spec'), dialogTitle: '📊 Сохранить спецификацию PDF',
+                    html: buildSpecificationHtml(), orientation: 'portrait', category: 'projects', subfolder: 'Отчеты',
                     destinationHint: makeDestinationHint('projects', 'Отчеты'),
                 });
-            } else if (action === 'save-report-jpg') {
-                await ensureProjectSaved();
-                const oldBtn = document.getElementById('btnSaveHtml'); if (oldBtn) oldBtn.click();
-            } else if (action === 'save-map-jpg') {
-                await ensureProjectSaved();
-                const oldBtn = document.getElementById('btnSaveJpgSheets'); if (oldBtn) oldBtn.click();
-            } else if (action === 'save-player-html') {
+            } else if (action === 'print-layout') {
                 if (!state.sheets.length) { alert('Сначала нажмите «Разложить»'); return; }
-                import('../../GsCAM/export-player.js').then(m => {
-                    const projName = makeProjectReportName('Player').replace(/[^a-zA-Z0-9_\-]/g, '_');
-                    m.downloadPlayerHtmlForSheet(0, { projectBase: projName, theme: localStorage.getItem('raskladka.theme') || 'default' });
-                    setStatus('Автономный HTML-плеер скачан');
-                });
+                await ensureProjectSaved();
+                const name = await askFileNameWithPath({ title: '🖨 Печать карты', defaultName: makeProjectReportName('KartaRs'), saveLabel: '🖨 Печать' });
+                if (!name) return;
+                doPrint(buildLayoutHtml({ includeSpec: false }), 'landscape', name);
             } else if (action === 'print-report') {
                 if (!state.parts.length) { alert('Сначала добавьте детали'); return; }
                 if (!state.sheets.length && !confirm('Раскладка не выполнена. Напечатать отчёт только по заданию (план)?')) return;
@@ -98,12 +112,26 @@ function setupReports() {
                 const name = await askFileNameWithPath({ title: '🖨 Печать отчёта', defaultName: makeProjectReportName('OtchetRS'), saveLabel: '🖨 Печать' });
                 if (!name) return;
                 doPrint(buildReportHtml(), 'portrait', name);
-            } else if (action === 'print-layout') {
-                if (!state.sheets.length) { alert('Сначала нажмите «Разложить»'); return; }
-                await ensureProjectSaved();
-                const name = await askFileNameWithPath({ title: '🖨 Печать карты', defaultName: makeProjectReportName('KartaRs'), saveLabel: '🖨 Печать' });
+            } else if (action === 'print-spec') {
+                if (!state.parts.length) { alert('Сначала добавьте детали'); return; }
+                const name = await askFileNameWithPath({ title: '🖨 Печать спецификации', defaultName: makeProjectReportName('Spec'), saveLabel: '🖨 Печать' });
                 if (!name) return;
-                doPrint(buildLayoutHtml(), 'landscape', name);
+                doPrint(buildSpecificationHtml(), 'portrait', name);
+            } else if (action === 'save-map-jpg') {
+                await ensureProjectSaved();
+                const oldBtn = document.getElementById('btnSaveJpgSheets'); if (oldBtn) oldBtn.click();
+            } else if (action === 'save-report-jpg') {
+                await ensureProjectSaved();
+                const oldBtn = document.getElementById('btnSaveHtml'); if (oldBtn) oldBtn.click();
+            } else if (action === 'save-player-html') {
+                if (!state.sheets.length) { alert('Сначала нажмите «Разложить»'); return; }
+                import('../../GsCAM/export-player.js').then(m => {
+                    const projName = makeProjectReportName('Player').replace(/[^a-zA-Z0-9_\-]/g, '_');
+                    m.downloadPlayerHtmlForSheet(0, { projectBase: projName, theme: localStorage.getItem('raskladka.theme') || 'default' });
+                    setStatus('Автономный HTML-плеер скачан');
+                });
+            } else if (action === 'export-csv') {
+                import('../report/report-csv.js').then(m => m.exportSpecToCSV());
             }
         },
     });
@@ -186,7 +214,9 @@ async function setupProject() {
     btnSave.style.display = 'none'; btnLoad.style.display = 'none';
     
     const newBtn = document.createElement('button');
-    newBtn.id = 'btnProjectMenu'; newBtn.textContent = '📁 Проект'; newBtn.title = 'Управление проектом';
+    newBtn.id = 'btnProjectMenu'; 
+    newBtn.textContent = '📁 Проект'; 
+    newBtn.title = 'Управление проектом';
     btnSave.parentNode.insertBefore(newBtn, btnSave);
 
     let recentItems = [];
@@ -198,7 +228,9 @@ async function setupProject() {
                 recentItems.push({ action: `load-${f.name}`, icon: '🕒', title: f.name, desc: 'Недавний проект' });
             }
         }
-    } catch (_) {}
+    } catch (e) {
+        console.warn('[menus] Не удалось загрузить список проектов:', e);
+    }
 
     const items = [
         { action: 'load', icon: '📂', title: 'Открыть проект', desc: 'Выбрать файл в проводнике' },
@@ -242,7 +274,7 @@ function setupTools() {
         id: 'toolsDropdown', triggerBtn: newBtn,
         items: [
             { action: 'scan-qr', icon: '📷', title: 'Сканировать QR', desc: 'Считать параметры листа или загрузить деталь/проект', hotkey: 'Ctrl+Q' },
-            { action: 'import-list', icon: '📋', title: 'Импорт из списка', desc: 'Вставить номера деталей из мессенджера', serverOnly: true, serverTip: 'Детали ищутся в папке «Детали» на сервере.' },
+            { action: 'import-list', icon: '📋', title: 'Импорт из списка', desc: 'Вставить номера деталей из мессенджера' },
             { type: 'sep' },
             { action: 'autofit', icon: '🎯', title: 'Подбор заготовки', desc: 'Автоматический подбор размера листа' },
             { action: 'catalog', icon: '📚', title: 'Каталог остатков', desc: 'Список остатков со всех листов' },
