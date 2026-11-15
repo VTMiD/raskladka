@@ -230,3 +230,17 @@ setTimeout(() => {
 }, 1000);
 
 initSplash();
+// Находим кнопку и привязываем к ней вызов модуля
+const btnShipment = document.getElementById('btnShipment');
+if (btnShipment) {
+  btnShipment.addEventListener('click', () => {
+    import('../GsCAM/shipment.js').then(m => {
+      if (m && typeof m.openShipmentModal === 'function') {
+        m.openShipmentModal();
+      }
+    }).catch(err => {
+      console.error('Ошибка загрузки модуля shipment:', err);
+      alert('Не удалось загрузить модуль сборки комплекта: ' + err.message);
+    });
+  });
+}

@@ -25,8 +25,8 @@ export function sheetToGcode(sheet, params, post, ctx, options = {}) {
     partByPart = false,
     cutFeed = null,
     bridgesEnabled = false, bridgeLength = 4, bridgeCount = 2,
-    slowPierceHoles = false, // <--- 
-    slowPiercePercent = 40,  // <--- НОВЫЙ ПАРАМЕТР (по умолчанию 40%)
+    slowPierceHoles = false,
+    slowPiercePercent = 40,
   } = options;
 
   const e = new GcodeEmitter(post);
@@ -42,7 +42,7 @@ export function sheetToGcode(sheet, params, post, ctx, options = {}) {
   const emitOpts = { 
     leadInRadius, entryMode, cutCw, useArcs, arcOpts, feedRate: currentFeed,
     bridgesEnabled, bridgeLength, bridgeCount,
-    slowPierceHoles, slowPiercePercent, // <--- ПЕРЕДАЕМ ДАЛЬШЕ
+    slowPierceHoles, slowPiercePercent,
   };
 
   const layersMap = new Map();
@@ -168,8 +168,6 @@ function emitContour(e, c, emitOpts) {
 
   const cid = e.contourStart();
 
-  // ═══ ЛОГИКА МЕДЛЕННОГО ВРЕЗА ДЛЯ ОТВЕРСТИЙ ═══
-  // Если это не внешний контур (отверстие) и опция включена — снижаем подачу
   let pierceFeed = feedRate;
   if (!c.isOuter && slowPierceHoles) {
     const factor = Math.max(5, Math.min(100, slowPiercePercent)) / 100;
@@ -181,7 +179,6 @@ function emitContour(e, c, emitOpts) {
   e.leadInStart();
   e.arc(lead.center[0], lead.center[1], lead.end[0], lead.end[1], lead.arcCcw);
 
-  // Если подача была снижена, возвращаем нормальную скорость после вреза
   if (Math.abs(pierceFeed - feedRate) > 1e-3) {
     e.numbered(`F${e.fmt(feedRate)}`);
   }

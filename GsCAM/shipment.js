@@ -15,7 +15,20 @@ import { generatePdfBlob } from '../js/dialogs/pdf-maker.js';
 import { generateJpgPages } from '../js/exports.js';
 import { makeQrSvg } from '../js/qr-barcode.js';
 
+// ═══ ИМПОРТ НАСТРОЕК И ПРОФИЛЕЙ ═══
+import { 
+  getShipmentProfiles, saveProfile, loadProfile, deleteProfile, 
+  saveLastState, loadLastState,
+  saveLastSelectedProfile, getLastSelectedProfile
+} from '../js/dialogs/shipment-settings.js';
+
 const PATHS_KEY = 'raskladka.paths.v1';
+
+const CHECKBOX_IDS = [
+  'chk-gcode', 'chk-report', 'chk-player', 'chk-qr', 'chk-map', 'chk-dxf',
+  'chk-pdf-map', 'chk-pdf-report', 'chk-pdf-labels',
+  'chk-jpg-map', 'chk-jpg-report', 'chk-jpg-labels'
+];
 
 function getShopPath() {
   try {
@@ -83,13 +96,14 @@ export function openShipmentModal() {
 
   const modal = document.createElement('div');
   modal.className = 'modal-overlay active';
+  
   modal.innerHTML = `
-    <div class="modal-window" style="width:640px; max-width:95vw">
+    <div class="modal-window" style="width:750px; max-width:95vw;">
       <div class="modal-header" style="background:#eaf4ff;border-bottom-color:#c9e0f5;color:#004a99">
         <span>📦 Собрать комплект в цех</span>
         <button class="close-btn" data-role="close" style="color:#004a99">✕</button>
       </div>
-      <div class="modal-body" style="max-height:70vh; overflow-y:auto;">
+      <div class="modal-body" style="padding: 16px;">
         <div style="background:#f5f5f5;padding:8px 12px;border-radius:4px;margin-bottom:12px;font-size:13px">
           Листов: <b>${state.sheets.length}</b> ·
           Разложено: <b>${totalPlaced}</b> из <b>${totalTask}</b>
@@ -98,84 +112,110 @@ export function openShipmentModal() {
           Проект: <b style="font-family:monospace;">${projectBase}</b>
         </div>
 
-        <div style="margin-bottom:12px; border:1px solid #c9e0f5; border-radius:6px; overflow:hidden;">
-          <div style="background:#eaf4ff; padding:6px 12px; font-weight:bold; color:#004a99; font-size:13px;">
-            Основной комплект (по умолчанию)
+        <div style="margin-bottom:16px; background:#fff; padding:10px; border:1px solid #c9e0f5; border-radius:6px;">
+          
+          <!-- ═══ ВЫПАДАЮЩИЙ СПИСОК КОМПЛЕКТОВ ═══ -->
+          <div style="display:flex; gap:10px; align-items:center; margin-bottom: 10px;">
+            <div style="flex:1;">
+              <label style="font-weight:600;font-size:13px;color:#004a99;display:block;margin-bottom:4px">
+                Выбрать сохранённый комплект
+              </label>
+              <select id="shipment-profile-select" style="width:100%; padding:8px; border:1px solid #bbb; border-radius:4px; font-size:14px; font-weight: bold; color: #004a99;">
+                <option value="">— Текущие настройки (не сохранён) —</option>
+              </select>
+            </div>
+            <div style="display:flex; gap:6px; margin-top: 18px;">
+               <button id="shipment-profile-save" style="padding:8px 12px; font-size:13px; background:#eaf9ec; border:1px solid #9ed5a4; color:#1a6a25; border-radius:4px; cursor:pointer; white-space:nowrap;" title="Сохранить текущий выбор как новый комплект">💾 Сохранить как...</button>
+               <button id="shipment-profile-delete" style="padding:8px 12px; font-size:13px; background:#fdecec; border:1px solid #f0b8b8; color:#b00; border-radius:4px; cursor:pointer;" title="Удалить выбранный комплект">🗑</button>
+            </div>
           </div>
-          <div style="padding:6px 12px;">
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
-              <input type="checkbox" data-role="include-gcode" checked>
-              <span><b>G-code (.tap)</b> — файлы для станка, по листам</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
-              <input type="checkbox" data-role="include-report" checked>
-              <span><b>HTML Отчёт</b> — спецификация деталей</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:6px 8px; background:#fff8e1; border-radius:4px; margin-top:4px;">
-              <input type="checkbox" data-role="include-player" checked>
-              <span><b>🎬 HTML Плеер</b> — анимация резки (по листам)</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0; color:#004a99; font-weight:600;">
-              <input type="checkbox" data-role="include-qr">
-              <span><b>📱 QR-код проекта</b> — SVG для сканирования</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
-              <input type="checkbox" data-role="include-map">
-              <span><b>HTML Карта раскроя</b> — открывается в браузере (только карты)</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
-              <input type="checkbox" data-role="include-dxf"> <!-- ГАЛКА СНЯТА, ПУНКТ ПЕРЕНЕСЕН ВНИЗ -->
-              <span><b>DXF</b> — все листы одним файлом</span>
-            </label>
-          </div>
-        </div>
 
-        <div style="margin-bottom:12px; border:1px solid #ddd; border-radius:6px; overflow:hidden;">
-          <div style="background:#f5f5f5; padding:6px 12px; font-weight:bold; color:#555; font-size:13px;">
-            Дополнительно: PDF (для печати)
-          </div>
-          <div style="padding:6px 12px;">
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
-              <input type="checkbox" data-role="pdf-map">
-              <span>PDF Карта раскроя (со спецификацией)</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
-              <input type="checkbox" data-role="pdf-report">
-              <span>PDF Отчёт</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
-              <input type="checkbox" data-role="pdf-labels">
-              <span>PDF Этикетки (рекомендуется для печати)</span>
-            </label>
-          </div>
-        </div>
-
-        <div style="margin-bottom:12px; border:1px solid #ddd; border-radius:6px; overflow:hidden;">
-          <div style="background:#f5f5f5; padding:6px 12px; font-weight:bold; color:#555; font-size:13px;">
-            Дополнительно: JPG (просмотр на телефоне)
-          </div>
-          <div style="padding:6px 12px;">
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
-              <input type="checkbox" data-role="jpg-map" checked>
-              <span>JPG Карта раскроя (по страницам)</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
-              <input type="checkbox" data-role="jpg-report">
-              <span>JPG Отчёт (по страницам)</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
-              <input type="checkbox" data-role="jpg-labels">
-              <span>JPG Этикетки (по страницам)</span>
-            </label>
-          </div>
-        </div>
-
-        <div style="margin-bottom:12px">
-          <label style="font-weight:600;font-size:13px;color:#333;display:block;margin-bottom:4px">
+          <!-- ═══ ПРЕФИКС ФАЙЛОВ ═══ -->
+          <label style="font-weight:600;font-size:13px;color:#004a99;display:block;margin-bottom:4px">
             Имя файлов (префикс)
           </label>
           <input type="text" data-role="base-name" value="${projectBase}"
-                 style="width:100%;padding:8px 10px;border:1px solid #bbb;border-radius:4px;font-size:13px;font-family:monospace;box-sizing:border-box">
+                 style="width:100%;padding:8px 10px;border:1px solid #bbb;border-radius:4px;font-size:14px;font-family:monospace;box-sizing:border-box; font-weight: bold;">
+        </div>
+
+        <div style="display:flex; gap:16px; margin-bottom:12px;">
+          <!-- ЛЕВАЯ КОЛОНКА -->
+          <div style="flex:1.2; display:flex; flex-direction:column; gap:12px;">
+            <div style="border:1px solid #c9e0f5; border-radius:6px; overflow:hidden;">
+              <div style="background:#eaf4ff; padding:6px 12px; font-weight:bold; color:#004a99; font-size:13px;">
+                Основной комплект
+              </div>
+              <div style="padding:6px 12px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
+                  <input type="checkbox" id="chk-gcode" data-role="include-gcode" checked>
+                  <span><b>G-code (.tap)</b> — файлы для станка, по листам</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
+                  <input type="checkbox" id="chk-report" data-role="include-report" checked>
+                  <span><b>HTML Отчёт</b> — спецификация деталей</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:6px 8px; background:#fff8e1; border-radius:4px; margin-top:4px;">
+                  <input type="checkbox" id="chk-player" data-role="include-player" checked>
+                  <span><b>🎬 HTML Плеер</b> — анимация резки (по листам)</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0; color:#004a99; font-weight:600;">
+                  <input type="checkbox" id="chk-qr" data-role="include-qr">
+                  <span><b>📱 QR-код проекта</b> — SVG для сканирования</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
+                  <input type="checkbox" id="chk-map" data-role="include-map">
+                  <span><b>HTML Карта раскроя</b> — открывается в браузере (только карты)</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
+                  <input type="checkbox" id="chk-dxf" data-role="include-dxf">
+                  <span><b>DXF</b> — все листы одним файлом</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- ПРАВАЯ КОЛОНКА -->
+          <div style="flex:0.8; display:flex; flex-direction:column; gap:12px;">
+            <div style="border:1px solid #ddd; border-radius:6px; overflow:hidden;">
+              <div style="background:#f5f5f5; padding:6px 12px; font-weight:bold; color:#555; font-size:13px;">
+                PDF (для печати)
+              </div>
+              <div style="padding:6px 12px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
+                  <input type="checkbox" id="chk-pdf-map" data-role="pdf-map">
+                  <span>PDF Карта раскроя (со спецификацией)</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
+                  <input type="checkbox" id="chk-pdf-report" data-role="pdf-report">
+                  <span>PDF Отчёт</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
+                  <input type="checkbox" id="chk-pdf-labels" data-role="pdf-labels">
+                  <span>PDF Этикетки (рекомендуется для печати)</span>
+                </label>
+              </div>
+            </div>
+
+            <div style="border:1px solid #ddd; border-radius:6px; overflow:hidden;">
+              <div style="background:#f5f5f5; padding:6px 12px; font-weight:bold; color:#555; font-size:13px;">
+                JPG (просмотр на телефоне)
+              </div>
+              <div style="padding:6px 12px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
+                  <input type="checkbox" id="chk-jpg-map" data-role="jpg-map" checked>
+                  <span>JPG Карта раскроя (по страницам)</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
+                  <input type="checkbox" id="chk-jpg-report" data-role="jpg-report">
+                  <span>JPG Отчёт (по страницам)</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
+                  <input type="checkbox" id="chk-jpg-labels" data-role="jpg-labels">
+                  <span>JPG Этикетки (по страницам)</span>
+                </label>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div style="padding:8px 10px;background:${shopPath ? '#eaf9ec' : '#fff8e1'};
@@ -195,8 +235,8 @@ export function openShipmentModal() {
         </div>
       </div>
       <div class="modal-footer">
-        <button data-role="do" class="primary">📦 Собрать и сохранить</button>
-        <button data-role="cancel">Отмена</button>
+        <button data-role="do" class="primary" style="font-size:14px; padding:8px 20px;">📦 Собрать и сохранить</button>
+        <button data-role="cancel" style="font-size:14px; padding:8px 20px;">Отмена</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
@@ -212,6 +252,65 @@ export function openShipmentModal() {
   };
   document.addEventListener('keydown', escH);
 
+  // ═══ ИНИЦИАЛИЗАЦИЯ ВЫПАДАЮЩЕГО СПИСКА ═══
+  const profileSelect = q('#shipment-profile-select');
+  const btnSaveProfile = q('#shipment-profile-save');
+  const btnDeleteProfile = q('#shipment-profile-delete');
+
+  function updateProfileList() {
+    const profiles = getShipmentProfiles();
+    const names = Object.keys(profiles).sort();
+    
+    profileSelect.innerHTML = '<option value="">— Текущие настройки (не сохранён) —</option>';
+    for (const name of names) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      profileSelect.appendChild(opt);
+    }
+  }
+
+  updateProfileList();
+  
+  // ═══ ЗАГРУЗКА ПОСЛЕДНЕГО ПРОФИЛЯ ═══
+  const lastProfile = getLastSelectedProfile();
+  if (lastProfile && getShipmentProfiles()[lastProfile]) {
+    profileSelect.value = lastProfile;
+    loadProfile(lastProfile, CHECKBOX_IDS);
+  } else {
+    loadLastState(CHECKBOX_IDS);
+  }
+
+  profileSelect.onchange = () => {
+    const name = profileSelect.value;
+    saveLastSelectedProfile(name);
+    if (!name) return;
+    loadProfile(name, CHECKBOX_IDS);
+  };
+
+  btnSaveProfile.onclick = () => {
+    const name = prompt('Введите название комплекта (например, "На станок", "Полный пакет"):');
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    saveProfile(trimmed, CHECKBOX_IDS);
+    updateProfileList();
+    profileSelect.value = trimmed;
+    saveLastSelectedProfile(trimmed);
+    setStatus(`Комплект «${trimmed}» сохранён`);
+  };
+
+  btnDeleteProfile.onclick = () => {
+    const name = profileSelect.value;
+    if (!name) { alert('Выберите комплект для удаления'); return; }
+    if (!confirm(`Удалить комплект «${name}»?`)) return;
+    deleteProfile(name);
+    updateProfileList();
+    profileSelect.value = '';
+    saveLastSelectedProfile('');
+    setStatus(`Комплект «${name}» удалён`);
+  };
+
+  // ═══ ОСНОВНАЯ ЛОГИКА СБОРА ═══
   const progressBox  = q('[data-role="progress"]');
   const progressBar  = q('[data-role="progress-bar"]');
   const progressText = q('[data-role="progress-text"]');
@@ -224,6 +323,8 @@ export function openShipmentModal() {
   }
 
   doBtn.onclick = async () => {
+    saveLastState(CHECKBOX_IDS);
+
     const base = sanitizeFileName(
       String(q('[data-role="base-name"]').value || '').trim() || 'Raskladka',
       100
@@ -288,6 +389,8 @@ export function openShipmentModal() {
     }
   };
 }
+
+// ═══ ФУНКЦИИ СБОРА И СОХРАНЕНИЯ ФАЙЛОВ ═══
 
 async function buildShipmentFiles(base, fullProjectName, want, onProgress) {
   const params = readParams();
