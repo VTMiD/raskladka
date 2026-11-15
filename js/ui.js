@@ -13,6 +13,7 @@ import { pushHistory } from './history.js';
 import { initSplash } from './splash.js';
 import { openStampSettingsModal } from './report/sheet-stamp-settings.js';
 import { exportSpecToCSV } from './report/report-csv.js';
+import { openJobsModal, closeJobsModal } from './parts.js'; // <--- ИМПОРТ ДОБАВЛЕН
 
 (function injectGlobalStyles() {
     if (document.getElementById('customDropdownStyles')) return;
@@ -616,6 +617,32 @@ function bindToolButtons() {
     if (btnExportCsv) {
         btnExportCsv.addEventListener('click', () => {
             exportSpecToCSV();
+        });
+    }
+
+    // ═══ КНОПКА "ЗАДАНИЯ" ═══
+    const btnOpenJobs = document.getElementById('btnOpenJobsModal');
+    if (btnOpenJobs) {
+        btnOpenJobs.addEventListener('click', openJobsModal);
+    }
+    
+    const btnCloseJobs = document.getElementById('btnCloseJobsModal');
+    if (btnCloseJobs) {
+        btnCloseJobs.addEventListener('click', closeJobsModal);
+    }
+    
+    const btnCloseJobs2 = document.getElementById('btnCloseJobsModal2');
+    if (btnCloseJobs2) {
+        btnCloseJobs2.addEventListener('click', closeJobsModal);
+    }
+    
+    const btnCreateNewJob = document.getElementById('btnCreateNewJob');
+    if (btnCreateNewJob) {
+        btnCreateNewJob.addEventListener('click', () => {
+            closeJobsModal();
+            setTimeout(() => {
+                document.getElementById('btnNewJob')?.click();
+            }, 100);
         });
     }
 }

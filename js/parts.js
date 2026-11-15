@@ -291,3 +291,106 @@ export function bindPartsUI(){
     }
   });
 }
+
+// ═══ УПРАВЛЕНИЕ ЗАДАНИЯМИ ═══
+
+export function openJobsModal() {
+  const modal = document.getElementById('jobsModal');
+  if (!modal) return;
+  renderJobsList();
+  modal.classList.add('active');
+}
+
+export function closeJobsModal() {
+  const modal = document.getElementById('jobsModal');
+  if (modal) modal.classList.remove('active');
+}
+
+function renderJobsList() {
+  const container = document.getElementById('jobsListContainer');
+  if (!container) return;
+
+  container.innerHTML = state.jobs.map(job => {
+    const isActive = job.id === state.activeJobId;
+    const partsCount = job.parts.reduce((s, p) => s + (p.qty || 0), 0);
+    
+    return `
+      <div style="display:flex; align-items:center; padding:10px; border-bottom:1px solid #eee; background:${isActive ? '#eaf4ff' : '#fff'};">
+        <div style="flex:1;">
+          <div style="font-weight:bold; color:${isActive ? '#004a99' : '#333'};">
+            ${job.name} ${isActive ? '(текущее)' : ''}
+          </div>
+          <div style="font-size:11px; color:#888;">Деталей: ${partsCount} · Листов: ${job.sheets.length}</div>
+        </div>
+        <div style="display:flex; gap:6px;">
+          ${!isActive ? `<button class="small primary" data-job-id="${job.id}" data-action="switch">Перейти</button>` : ''}
+          <button class="small" data-job-id="${job.id}" data-action="transfer" title="Перенести сюда выделенные детали из текущего задания" style="background:#e8f4ff; color:#004a99; border-color:#4a90d9;">
+            ⬅ Перенести
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('button[data-action]').forEach(btn => {
+    btn.onclick = () => {
+      const jobId = btn.dataset.jobId;
+      const action = btn.dataset.action;
+      
+      if (action === 'switch') {
+        switchJob(jobId);
+        closeJobsModal();
+        refreshJobView();
+      } else if (action === 'transfer') {
+        transferSelectedToJob(jobId);
+      }
+    };
+  });
+}
+
+export function transferSelectedToJob(targetJobId) {
+  if (!state.selectedRows || !state.selectedRows.size) {
+    alert('Сначала выделите детали в таблице слева (кликните по строкам в списке деталей).');
+    return;
+  }
+
+  const targetJob = state.jobs.find(j => j.id === targetJobId);
+  if (!targetJob) return;
+
+  if (targetJobId === state.activeJobId) {
+    alert('Это текущее задание. Выберите другое.');
+    return;
+  }
+
+  if (!confirm(`Перенести ${state.selectedRows.size} выделенных деталей в задание «${targetJob.name}»?`)) return;
+
+  const currentJob = getActiveJob();
+  if (!currentJob) return;
+
+  const selectedIndices = [...state.selectedRows].sort((a, b) => b - a);
+  const transferredNames = [];
+
+  for (const idx of selectedIndices) {
+    const part = currentJob.parts[idx];
+    if (!part) continue;
+    
+    targetJob.parts.push({ ...part });
+    transferredNames.push(part.name);
+    
+    currentJob.parts.splice(idx, 1);
+    
+    for (const sheet of currentJob.sheets) {
+      sheet.placed = sheet.placed.filter(pl => pl.partIdx !== idx);
+      for (const pl of sheet.placed) {
+        if (pl.partIdx > idx) pl.partIdx--;
+      }
+    }
+  }
+
+  state.selectedRows.clear();
+  renderPartsTable();
+  refreshJobView();
+  pushHistory();
+  
+  alert(`Перенесено деталей: ${transferredNames.length}. Теперь можно переключиться на задание «${targetJob.name}» и разложить их.`);
+}

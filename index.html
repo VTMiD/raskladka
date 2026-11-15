@@ -39,6 +39,7 @@
   <button id="btnPrintLabels">🏷 Этикетки</button>
   <button id="btnOpenReport">ℹ Информация</button>
   <div id="fixBar">
+    <button id="btnOpenJobsModal" title="Управление заданиями и перенос деталей">📁 Задания</button>
     <button id="btnSelectFrame" title="Обвести область: с деталями — выделит их, пустую — запомнит для Фиксации/Остатка">📐 Область</button>
     <button id="btnFixToggle" title="Зафиксировать детали / создать запретную зону из выделенной области">📌 Фиксация</button>
     <button id="btnUnfixAll" title="Снять фиксацию со всех деталей и запретные зоны">🔓 Отменить фиксацию</button>
@@ -198,14 +199,41 @@
 <main id="main" style="display: flex; flex-direction: column; flex: 1; min-width: 0; background: #2b2b2b;">
   
   <!-- Панель координат (над холстом) -->
-  <div id="coordsPanel" style="background: #1e1e1e; border-bottom: 1px solid #4a7fb5; padding: 8px 12px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; color: #fff; font-size: 13px; z-index: 10;">
-    <div style="font-weight: bold; color: #cfe4ff; font-size: 12px; border-right: 1px solid #4a7fb5; padding-right: 12px;">📐 Координаты</div>
-    <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff;">X: <input id="coordX" type="number" step="1" style="width: 60px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
-    <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff;">Y: <input id="coordY" type="number" step="1" style="width: 60px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
-    <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff;">∠: <input id="coordAngle" type="number" step="90" style="width: 60px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
-  </div>
+         <div id="coordsPanel" style="background: #1e1e1e; border-bottom: 1px solid #4a7fb5; padding: 6px 12px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; color: #fff; font-size: 12px; z-index: 10; flex-wrap: nowrap; overflow-x: auto;">
 
-  <!-- Обертка для холста -->
+    <!-- ═══ ЛЕВАЯ ЧАСТЬ: КООРДИНАТЫ ═══ -->
+    <div style="display: flex; align-items: center; gap: 12px; white-space: nowrap;">
+      <div style="font-weight: bold; color: #cfe4ff; font-size: 12px; border-right: 1px solid #4a7fb5; padding-right: 12px;">📐 Координаты</div>
+      <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff;">X: <input id="coordX" type="number" step="1" style="width: 55px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
+      <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff;">Y: <input id="coordY" type="number" step="1" style="width: 55px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
+      <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff;">∠: <input id="coordAngle" type="number" step="90" style="width: 55px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
+    </div>
+
+    <!-- ═══ ЦЕНТРАЛЬНАЯ ЧАСТЬ: ЗАДАНИЕ ═══ -->
+    <div id="canvasJobBar" style="display: flex; align-items: center; gap: 12px; background: #2b3a4a; padding: 4px 14px; border-radius: 4px; white-space: nowrap; border: 1px solid #4a7fb5; position: absolute; left: 50%; transform: translateX(-50%);">
+      <span style="color: #cfe4ff;">📁 Задание: <b id="infoJobName" style="color: #fff;">—</b></span>
+      <span style="color: #cfe4ff;">📄 Лист: <b id="infoSheetNum" style="color: #fff;">1 из 1</b></span>
+      <span style="color: #cfe4ff;">📏 <b id="infoThickness" style="color: #fff;">0</b> мм</span>
+    </div>
+
+    <!-- ═══ ПРАВАЯ ЧАСТЬ: ПУСТАЯ (для баланса) ═══ -->
+    <div style="width: 200px;"></div>
+
+  </div>
+    
+    <!-- ═══ БЛОК ИНФО О ЗАДАНИИ ═══ -->
+    <div id="canvasJobBar" style="display: flex; align-items: center; gap: 12px; background: #2b3a4a; padding: 4px 10px; border-radius: 4px; white-space: nowrap; border: 1px solid #4a7fb5;">
+      <span style="color: #cfe4ff;">📁 Задание: <b id="infoJobName" style="color: #fff;">—</b></span>
+      <span style="color: #cfe4ff;">📄 Лист: <b id="infoSheetNum" style="color: #fff;">1 из 1</b></span>
+      <span style="color: #cfe4ff;">📏 <b id="infoThickness" style="color: #fff;">0</b> мм</span>
+    </div>
+
+    <!-- ═══ КООРДИНАТЫ ═══ -->
+    <div style="font-weight: bold; color: #cfe4ff; font-size: 12px; border-left: 1px solid #4a7fb5; padding-left: 12px; white-space: nowrap;">📐 Координаты</div>
+    <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff; white-space: nowrap;">X: <input id="coordX" type="number" step="1" style="width: 55px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
+    <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff; white-space: nowrap;">Y: <input id="coordY" type="number" step="1" style="width: 55px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
+    <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff; white-space: nowrap;">∠: <input id="coordAngle" type="number" step="90" style="width: 55px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
+  </div>  <!-- Обертка для холста -->
   <div style="position: relative; flex: 1; min-height: 0;">
     <canvas id="canvas"></canvas>
     <div id="canvasHint">ЛКМ на пустом — рамка выделения · ЛКМ на детали — тащить · Shift+рамка — добавить · R/Z — поворот/зеркало · Delete — убрать · Esc — снять выделение · Alt — шаг сетки · Пробел — Показать всё</div>
@@ -415,6 +443,29 @@
   </div>
 </div>
 
+<!-- Модалка управления заданиями -->
+<div class="modal-overlay" id="jobsModal">
+  <div class="modal-window" style="width:550px">
+    <div class="modal-header" style="background:#eaf4ff;border-bottom-color:#c9e0f5;color:#004a99">
+      <span>📁 Управление заданиями</span>
+      <button class="close-btn" id="btnCloseJobsModal" style="color:#004a99">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="hint" style="margin-bottom:10px">
+        Выберите задание, чтобы переключиться, или перенесите в него выделенные детали из текущего задания.
+      </div>
+      <div id="jobsListContainer" style="max-height:400px; overflow-y:auto; border:1px solid #ddd; border-radius:4px; background:#fff">
+        <!-- Сюда JS вставит список -->
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button id="btnCreateNewJob" class="primary">+ Создать новое задание</button>
+      <button id="btnCloseJobsModal2">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<div id="contextMenu" class="context-menu"></div>
 <div id="contextMenu" class="context-menu"></div>
 <div id="dropOverlay">Отпустите DXF-файлы для загрузки</div>
 <div id="printArea"></div>
