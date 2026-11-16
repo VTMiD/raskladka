@@ -128,9 +128,12 @@ function generateArrayPositions(settings) {
 }
 
 // ─── Проверка коллизий массива с уже размещёнными деталями ───
-function arrayCollides(sheet, positions, buffer) {
+function arrayCollides(sheet, positions, buffer, ignorePartIdx = -1) {
   for (const pos of positions) {
     for (const other of sheet.placed) {
+      // Если это та же деталь, которую мы сейчас массируем — пропускаем
+      if (other.partIdx === ignorePartIdx) continue;
+
       const ob = other.bbox;
       if (pos.bbox[0] >= ob[2] + buffer) continue;
       if (pos.bbox[2] + buffer <= ob[0]) continue;
@@ -231,10 +234,10 @@ function placeArrayOnSheet() {
     }
   }
 
-  // 2. Ищем лист, куда массив встаёт без наложений
+  // 2. Ищем лист, куда массив встаёт без наложений (ИГНОРИРУЯ исходную деталь)
   let targetSheet = -1;
   for (let si = 0; si < state.sheets.length; si++) {
-    if (!arrayCollides(state.sheets[si], positions, buffer)) {
+    if (!arrayCollides(state.sheets[si], positions, buffer, partIdx)) {
       targetSheet = si;
       break;
     }
@@ -257,6 +260,23 @@ function placeArrayOnSheet() {
 
   const sheet = state.sheets[targetSheet];
   let placed = 0;
+
+  // ═══════════════════════════════════════════════════════════════
+  // УДАЛЯЕМ ВСЕ ИСХОДНЫЕ ДЕТАЛИ ЭТОГО ТИПА НА ВЫБРАННОМ ЛИСТЕ
+  // ═══════════════════════════════════════════════════════════════
+  // Удаляем ту, что была выделена (если мы ставили массив на её основе)
+  if (state.selectedPart) {
+    const { sheetIdx, placedIdx } = state.selectedPart;
+    if (sheetIdx === targetSheet) {
+      state.sheets[sheetIdx].placed.splice(placedIdx, 1);
+      state.selectedPart = null;
+    }
+  }
+  
+  // Удаляем все остальные детали этого индекса (чтобы не было дублей)
+  sheet.placed = sheet.placed.filter(pl => pl.partIdx !== partIdx);
+  // ═══════════════════════════════════════════════════════════════
+
   for (const pos of positions) {
     sheet.placed.push({
       partIdx,
