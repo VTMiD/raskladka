@@ -29,6 +29,7 @@ import { initDialogs } from './dialogs/dialogs.js';
 import { installProjectHooks } from './project-hooks.js';
 import { bindLayersUI } from './layers.js';
 import { initSplash } from './splash.js';
+import { initHelp } from './help/help.js'; // <--- ДОБАВЛЕНО
 
 function initNestRunner() {
   const btnNest = $('btnNest');
@@ -165,6 +166,7 @@ safeBind('initProjectIO',        initProjectIO);
 safeBind('initAutosave',         initAutosave);
 safeBind('bindHistoryUI',        bindHistoryUI);
 safeBind('bindCutUI',            bindCutUI);
+safeBind('initHelp',             initHelp); // <--- ДОБАВЛЕНО
 
 try { updateGaParamsUI(); } catch (_) {}
 try { updateStockDxfUI(); } catch (_) {}
