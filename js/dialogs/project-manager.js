@@ -142,6 +142,9 @@ export function openSaveProjectDialog(btnSave) {
     const currentNumStr = String(currentNum).padStart(2, '0');
     const currentProject = (typeof getCurrentProjectName === 'function') ? getCurrentProjectName() : '';
 
+    // Убираем расширение для отображения в поле ввода
+    const defaultNameClean = defaultName.replace(/\.dxfnest\.json$/i, '').replace(/\.json$/i, '');
+
     const modal = document.createElement('div');
     modal.className = 'modal-overlay active';
     modal.innerHTML = `
@@ -158,10 +161,10 @@ export function openSaveProjectDialog(btnSave) {
         </div>
         <div class="hint" style="margin-bottom:8px">Имя файла (расширение <b>.dxfnest.json</b> добавится автоматически).</div>
         <div style="display:flex;flex-direction:column;gap:4px">
-          <input id="spName" type="text" style="width:100%;padding:8px 10px;border:1px solid #bbb;border-radius:4px;font-size:13px;font-family:monospace" autocomplete="off" spellcheck="false">
+          <input id="spName" type="text" style="width:100%;padding:8px 10px;border:1px solid #bbb;border-radius:4px;font-size:16px;font-family:monospace" autocomplete="off" spellcheck="false">
         </div>
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
-          ${currentProject ? `<button id="spCurrent" class="small" style="padding:4px 10px; font-size:12px;">↩ Текущий проект: ${currentProject}</button>` : ''}
+          ${currentProject ? `<button id="spCurrent" class="small" style="padding:4px 10px; font-size:12px;">↩ Текущий проект: ${currentProject.replace(/\.dxfnest\.json$/i, '')}</button>` : ''}
           <button id="spNext" class="small" style="padding:4px 10px; font-size:12px;">🔄 Следующий номер +1</button>
         </div>
       </div>
@@ -174,7 +177,9 @@ export function openSaveProjectDialog(btnSave) {
 
     const inpName = modal.querySelector('#spName');
     const inpNum = modal.querySelector('#spNum');
-    inpName.value = defaultName;
+    
+    // Устанавливаем имя без расширения
+    inpName.value = defaultNameClean;
     setTimeout(() => { inpName.focus(); inpName.select(); }, 0);
 
     inpNum.addEventListener('input', () => {
@@ -182,7 +187,10 @@ export function openSaveProjectDialog(btnSave) {
         if (isNaN(n) || n < 1) n = 1;
         inpNum.value = String(n).padStart(2, '0');
         if (typeof buildProjectName === 'function') {
-            inpName.value = buildProjectName(n);
+            let newName = buildProjectName(n);
+            // Убираем расширение перед установкой в поле
+            newName = newName.replace(/\.dxfnest\.json$/i, '').replace(/\.json$/i, '');
+            inpName.value = newName;
         }
     });
 
@@ -192,8 +200,14 @@ export function openSaveProjectDialog(btnSave) {
     modal.addEventListener('click', e => { if (e.target === modal) close(); });
 
     modal.querySelector('#spSave').onclick = () => {
-        const raw = inpName.value.trim();
+        let raw = inpName.value.trim();
         if (!raw) { inpName.focus(); return; }
+        
+        // При сохранении возвращаем расширение обратно, если его нет
+        if (!raw.toLowerCase().endsWith('.json')) {
+            raw += '.dxfnest.json';
+        }
+        
         window.__projectSaveName = raw;
         close();
         btnSave.click();
@@ -201,10 +215,9 @@ export function openSaveProjectDialog(btnSave) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ГЕНЕРАЦИЯ И ПОКАЗ QR-КОДА (С ПОЛНОЭКРАННЫМ РЕЖИМОМ)
+// ГЕНЕРАЦИЯ И ПОКАЗ QR-КОДА
 // ═══════════════════════════════════════════════════════════════
 export function generateProjectQr(projectName) {
-    // Генерируем SVG один раз
     const qrSvg = makeQrSvg(`PROJECT:${projectName}`, { cellSize: 10, margin: 4 });
 
     const modal = document.createElement('div');
@@ -226,10 +239,8 @@ export function generateProjectQr(projectName) {
     </div>`;
     document.body.appendChild(modal);
 
-    // Вставляем SVG
     document.getElementById('qrProjContainer').innerHTML = qrSvg;
 
-    // Сохраняем QR в папку Q-KOD на сервере (только если сервер запущен)
     if (isServerAvailable()) {
         fetch('/api/save-file', {
             method: 'POST',
@@ -243,12 +254,9 @@ export function generateProjectQr(projectName) {
     document.getElementById('btnCloseQrProj2').onclick = close;
     modal.addEventListener('click', e => { if (e.target === modal) close(); });
 
-    // Обработчик полноэкранного режима
     document.getElementById('btnFullscreenQr').onclick = () => {
         const fsModal = document.createElement('div');
-        // Черный фон на весь экран
         fsModal.style.cssText = 'position: fixed; inset: 0; background: #000; z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer;';
-        
         fsModal.innerHTML = `
             <div style="color: #fff; font-size: 24px; margin-bottom: 20px; font-weight: bold; text-align: center;">
                 Наведите камеру телефона
@@ -261,10 +269,7 @@ export function generateProjectQr(projectName) {
             </div>
             <button style="margin-top: 30px; padding: 10px 30px; font-size: 18px; background: #333; color: #fff; border: 1px solid #555; border-radius: 6px;">Закрыть</button>
         `;
-
-        // Клик в любом месте закрывает полноэкранный режим
         fsModal.onclick = () => fsModal.remove();
-        
         document.body.appendChild(fsModal);
     };
 }
@@ -285,7 +290,7 @@ export function openQrProjectDialog() {
       <div class="modal-body">
         <div style="display:flex;flex-direction:column;gap:4px">
           <label for="qpName" style="font-weight:600;font-size:13px;color:#333">Имя проекта</label>
-          <input id="qpName" type="text" style="width:100%;padding:8px 10px;border:1px solid #bbb;border-radius:4px;font-size:13px;font-family:monospace" autocomplete="off" spellcheck="false">
+          <input id="qpName" type="text" style="width:100%;padding:8px 10px;border:1px solid #bbb;border-radius:4px;font-size:14px;font-family:monospace" autocomplete="off" spellcheck="false">
         </div>
       </div>
       <div class="modal-footer">
@@ -296,7 +301,8 @@ export function openQrProjectDialog() {
     document.body.appendChild(modal);
 
     const inp = modal.querySelector('#qpName');
-    inp.value = defaultName;
+    // Убираем расширение для отображения
+    inp.value = defaultName.replace(/\.dxfnest\.json$/i, '').replace(/\.json$/i, '');
     setTimeout(() => { inp.focus(); inp.select(); }, 0);
 
     const close = () => modal.remove();
@@ -308,6 +314,7 @@ export function openQrProjectDialog() {
         let raw = inp.value.trim();
         if (!raw) { inp.focus(); return; }
         const low = raw.toLowerCase();
+        // При генерации QR возвращаем расширение, если его нет
         if (!low.endsWith('.dxfnest.json') && !low.endsWith('.json')) raw += '.dxfnest.json';
         close();
         generateProjectQr(raw);
