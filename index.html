@@ -47,7 +47,6 @@
     <button id="btnDuplicateSelected" title="Дублировать выделенные (Ctrl+D)">⧉ Дублировать</button>
     <button id="btnOpenArray" title="Массив деталей">🔲 Массив</button>
     <span id="fixCount" class="fix-count">📌 Зафиксировано: 0</span>
-    <span id="autosaveInfo" class="autosave-info"></span>
     <div id="status"></div>
     <div class="tools-group">
       <button id="btnCut" type="button" title="Резать лист по прямым (клик → клик). Shift — орто, Ctrl — без привязки.">✂ Резать лист</button>
@@ -61,12 +60,6 @@
       <button id="btnMeasureClear" type="button" title="Очистить измерения">🗑</button>
     </div>
   </div>
-</div>
-<div id="autosaveBanner" style="display:none">
-  <span>💾 Найдено автосохранение от <b id="autosaveBannerDate">—</b></span>
-  <button id="btnAutosaveRestore" class="primary">Восстановить</button>
-  <button id="btnAutosaveDiscard">Удалить</button>
-  <button id="btnAutosaveClose" title="Закрыть баннер">✕</button>
 </div>
 <div id="content">
 <aside id="side">
@@ -199,12 +192,22 @@
 </aside>
 <main id="main" style="display: flex; flex-direction: column; flex: 1; min-width: 0; background: #2b2b2b;">
   
-  <!-- Панель координат (над холстом) -->
-  <div id="coordsPanel" style="background: #1e1e1e; border-bottom: 1px solid #4a7fb5; padding: 8px 12px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; color: #fff; font-size: 13px; z-index: 10;">
-    <div style="font-weight: bold; color: #cfe4ff; font-size: 12px; border-right: 1px solid #4a7fb5; padding-right: 12px;">📐 Координаты</div>
-    <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff;">X: <input id="coordX" type="number" step="1" style="width: 60px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
-    <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff;">Y: <input id="coordY" type="number" step="1" style="width: 60px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
-    <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff;">∠: <input id="coordAngle" type="number" step="90" style="width: 60px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
+    <div id="coordsPanel" style="background: #1e1e1e; border-bottom: 1px solid #4a7fb5; padding: 6px 12px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; color: #fff; font-size: 12px; z-index: 10; flex-wrap: nowrap; overflow-x: auto;">
+
+    <!-- ═══ ГРУППА КООРДИНАТ (будет тускнеть, если ничего не выделено) ═══ -->
+    <div id="coordInputsWrap" style="display: flex; align-items: center; gap: 12px; white-space: nowrap;">
+      <div style="font-weight: bold; color: #cfe4ff; font-size: 16px; border-right: 1px solid #4a7fb5; padding-right: 12px;" title="Координаты">📐</div>
+      
+      <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff; white-space: nowrap;">X: <input id="coordX" type="number" step="1" style="width: 55px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
+      <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff; white-space: nowrap;">Y: <input id="coordY" type="number" step="1" style="width: 55px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
+      <label style="display:flex; align-items:center; gap:4px; color: #cfe4ff; white-space: nowrap;">∠: <input id="coordAngle" type="number" step="90" style="width: 55px; padding: 3px; border-radius: 3px; border: 1px solid #4a7fb5; background: #2b5a8a; color: #fff; font-weight: bold; text-align: center;"></label>
+    </div>
+
+    <!-- ═══ ВКЛАДКИ ЗАДАНИЙ (ВСЕГДА ЯРКИЕ И ДОСТУПНЫЕ) ═══ -->
+    <div id="jobTabsBar" style="display: flex; align-items: center; gap: 6px; white-space: nowrap; border-left: 1px solid #4a7fb5; padding-left: 12px; margin-left: 8px; overflow-x: auto; max-width: 50vw;">
+      <!-- Сюда JS будет вставлять вкладки -->
+    </div>
+
   </div>
 
   <!-- Обертка для холста -->

@@ -1,9 +1,7 @@
 // js/splash.js
-let globalAudioCtx = null; // Глобальный контекст, чтобы не создавать его заново
+let globalAudioCtx = null;
 
 export function initSplash(force = false) {
-  // По умолчанию заставка выключена: показываем только если её явно включили,
-  // либо при принудительном запуске (пункт «Тест заставки»).
   if (!force && localStorage.getItem('raskladka.splashEnabled') !== 'true') return;
 
   const mainContainer = document.getElementById('main');
@@ -12,7 +10,6 @@ export function initSplash(force = false) {
   mainContainer.style.position = 'relative';
   mainContainer.style.overflow = 'hidden';
 
-  // Инициализируем аудио-контекст (если его еще нет)
   if (!globalAudioCtx) {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -30,6 +27,7 @@ export function initSplash(force = false) {
 
   const style = document.createElement('style');
   style.id = 'plasma-splash-styles';
+  // ═══ CSS АНИМАЦИИ (ТАЙМИНГИ ПОДОГНАНЫ ПОД 4.5 СЕК) ═══
   style.textContent = `
     #plasma-splash {
       position: absolute !important;
@@ -38,7 +36,7 @@ export function initSplash(force = false) {
       z-index: 9999 !important;
       background: #1e1e1e;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      transition: opacity 0.8s ease, visibility 0.8s;
+      transition: opacity 0.5s ease, visibility 0.5s; /* Уменьшили затухание */
       overflow: hidden;
     }
     #plasma-splash.fade-out { opacity: 0; visibility: hidden; }
@@ -55,7 +53,6 @@ export function initSplash(force = false) {
       text-anchor: middle;
     }
 
-    /* ─── Кнопка включения звука (для Firefox) ─── */
     #splash-sound-btn {
       position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
       z-index: 10000; background: #0066cc; color: #fff;
@@ -66,18 +63,15 @@ export function initSplash(force = false) {
     }
     #splash-sound-btn:hover { background: #0050a0; }
 
-    /* ═══════════════════════════════════════
-       ФИГУРЫ (Круг слева, Прямоугольник справа)
-       ═══════════════════════════════════════ */
     .shape-cut, .shape-glow { fill: transparent; }
     
     .circle-shape {
       stroke-dasharray: 200; stroke-dashoffset: 200;
-      animation: drawShape 1.5s ease-in-out forwards;
+      animation: drawShape 0.8s ease-in-out forwards;
     }
     .rect-shape {
       stroke-dasharray: 300; stroke-dashoffset: 300;
-      animation: drawShape 1.5s 8.0s ease-in-out forwards;
+      animation: drawShape 0.6s 3.6s ease-in-out forwards;
     }
     .shape-cut { stroke: #ffffff; stroke-width: 2px; }
     .shape-glow { stroke: #00ffff; stroke-width: 5px; filter: drop-shadow(0 0 15px #00ffff); }
@@ -88,8 +82,8 @@ export function initSplash(force = false) {
       stroke-dasharray: 0.1 300; stroke-dashoffset: 0; opacity: 0;
       filter: drop-shadow(0 0 8px #fff) drop-shadow(0 0 16px #00ffff) drop-shadow(0 0 24px #ff5500);
     }
-    .cutter-circle { animation: runCutterShape 1.5s ease-in-out forwards; }
-    .cutter-rect { animation: runCutterShape 1.5s 8.0s ease-in-out forwards; }
+    .cutter-circle { animation: runCutterShape 0.8s ease-in-out forwards; }
+    .cutter-rect { animation: runCutterShape 0.6s 3.6s ease-in-out forwards; }
 
     @keyframes drawShape { to { stroke-dashoffset: 0; } }
     @keyframes runCutterShape {
@@ -98,22 +92,19 @@ export function initSplash(force = false) {
       100% { opacity: 0; stroke-dashoffset: -300; }
     }
 
-    /* ═══════════════════════════════════════
-       ТЕКСТ
-       ═══════════════════════════════════════ */
     .sub-text, .sub-text-glow {
       font-size: 18px; letter-spacing: 1px;
       stroke-dasharray: 1000; stroke-dashoffset: 1000;
     }
     .sub-text {
       fill: transparent; stroke: #ffffff; stroke-width: 1px;
-      animation: drawPathSub 0.8s linear forwards, fillTextSub 0.3s 0.8s forwards;
-      animation-delay: 1.5s, 2.3s;
+      animation: drawPathSub 0.4s linear forwards, fillTextSub 0.15s 0.4s forwards;
+      animation-delay: 0.8s, 1.2s;
     }
     .sub-text-glow {
       fill: transparent; stroke: #00ffff; stroke-width: 4px;
-      animation: drawPathSub 0.8s linear forwards, glowFadeSub 1.5s linear forwards;
-      animation-delay: 1.5s, 1.8s; filter: drop-shadow(0 0 10px #00ffff);
+      animation: drawPathSub 0.4s linear forwards, glowFadeSub 0.8s linear forwards;
+      animation-delay: 0.8s, 0.9s; filter: drop-shadow(0 0 10px #00ffff);
     }
     @keyframes drawPathSub { to { stroke-dashoffset: 0; } }
     @keyframes fillTextSub { to { fill: #e0e0e0; stroke: transparent; } }
@@ -128,13 +119,13 @@ export function initSplash(force = false) {
     }
     .main-text {
       fill: transparent; stroke: #ffffff; stroke-width: 2px;
-      animation: drawPath 0.3s linear forwards, fillText 0.2s linear forwards;
-      animation-delay: calc(2.5s + var(--i) * 0.35s), calc(2.5s + var(--i) * 0.35s + 0.3s);
+      animation: drawPath 0.15s linear forwards, fillText 0.1s linear forwards;
+      animation-delay: calc(1.2s + var(--i) * 0.15s), calc(1.2s + var(--i) * 0.15s + 0.15s);
     }
     .main-text-glow {
       fill: transparent; stroke: #ff8c00; stroke-width: 6px;
-      animation: drawPath 0.3s linear forwards, glowFade 0.8s linear forwards;
-      animation-delay: calc(2.5s + var(--i) * 0.35s), calc(2.5s + var(--i) * 0.35s + 0.2s);
+      animation: drawPath 0.15s linear forwards, glowFade 0.4s linear forwards;
+      animation-delay: calc(1.2s + var(--i) * 0.15s), calc(1.2s + var(--i) * 0.15s + 0.1s);
       filter: drop-shadow(0 0 15px #ff5500);
     }
     @keyframes drawPath { to { stroke-dashoffset: 0; } }
@@ -150,8 +141,8 @@ export function initSplash(force = false) {
       stroke-linecap: round; stroke-linejoin: round;
       stroke-dasharray: 0.1 300; stroke-dashoffset: 0; opacity: 0;
       filter: drop-shadow(0 0 6px #fff) drop-shadow(0 0 15px #00ffff) drop-shadow(0 0 30px #ff5500);
-      animation: runCutter 0.3s linear forwards;
-      animation-delay: calc(2.5s + var(--i) * 0.35s);
+      animation: runCutter 0.15s linear forwards;
+      animation-delay: calc(1.2s + var(--i) * 0.15s);
     }
     @keyframes runCutter {
       0% { opacity: 1; } 99% { opacity: 1; }
@@ -162,7 +153,7 @@ export function initSplash(force = false) {
     .spark {
       position: absolute; width: 2px; height: 2px; background: #fff;
       border-radius: 50%; box-shadow: 0 0 8px 2px #ff8c00;
-      animation: sparkFly 0.6s ease-out forwards;
+      animation: sparkFly 0.3s ease-out forwards;
     }
     @keyframes sparkFly {
       0% { transform: translate(0, 0) scale(1); opacity: 1; }
@@ -211,7 +202,7 @@ export function initSplash(force = false) {
   
   mainContainer.appendChild(splash);
 
-  // ─── Звук ───
+  // ─── Звук (длительность 4.0 сек) ───
   function playContinuousCuttingSound() {
     if (!globalAudioCtx) return;
 
@@ -233,7 +224,7 @@ export function initSplash(force = false) {
 
     try {
       const ctx = globalAudioCtx;
-      const duration = 9.5; 
+      const duration = 4.0; 
 
       const osc = ctx.createOscillator();
       osc.type = 'sawtooth';
@@ -242,7 +233,7 @@ export function initSplash(force = false) {
       const oscGain = ctx.createGain();
       oscGain.gain.setValueAtTime(0, ctx.currentTime);
       oscGain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.1);
-      oscGain.gain.setValueAtTime(0.15, ctx.currentTime + duration - 0.5);
+      oscGain.gain.setValueAtTime(0.15, ctx.currentTime + duration - 0.3);
       oscGain.gain.linearRampToValueAtTime(0, ctx.currentTime + duration);
       
       osc.connect(oscGain);
@@ -265,7 +256,7 @@ export function initSplash(force = false) {
       noiseGain.gain.setValueAtTime(0, ctx.currentTime);
       noiseGain.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 0.05); 
       noiseGain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.3);
-      noiseGain.gain.setValueAtTime(0.2, ctx.currentTime + duration - 0.5);
+      noiseGain.gain.setValueAtTime(0.2, ctx.currentTime + duration - 0.3);
       noiseGain.gain.linearRampToValueAtTime(0, ctx.currentTime + duration);
       
       noise.connect(filter);
@@ -282,16 +273,11 @@ export function initSplash(force = false) {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // ФИКС СИНХРОНИЗАЦИИ: 
-  // Ждем 100 мс, чтобы браузер отрисовал картинку и запустил CSS,
-  // и только потом включаем звук.
-  // ═══════════════════════════════════════════════════════════════
   setTimeout(() => {
     playContinuousCuttingSound();
   }, 100);
 
-  // ─── Искры (логика без изменений) ───
+  // ─── Искры (под 4.5 сек) ───
   const sparksContainer = document.getElementById('splash-sparks');
   const splashRect = splash.getBoundingClientRect();
   const startTime = performance.now();
@@ -305,7 +291,8 @@ export function initSplash(force = false) {
     if (!svgContainer) return;
     const rect = svgContainer.getBoundingClientRect();
 
-    if (elapsed >= 0 && elapsed < 1500) {
+    // Круг (0 - 0.8 сек)
+    if (elapsed >= 0 && elapsed < 800) {
       const randomX = 75 + Math.random() * 50;
       const randomY = 115 + Math.random() * 50;
       const screenX = rect.left + (randomX / viewBoxW) * rect.width;
@@ -320,13 +307,14 @@ export function initSplash(force = false) {
         spark.style.setProperty('--dx', Math.cos(angle) * distance);
         spark.style.setProperty('--dy', Math.sin(angle) * distance);
         sparksContainer.appendChild(spark);
-        setTimeout(() => spark.remove(), 600);
+        setTimeout(() => spark.remove(), 300);
       }
       return;
     }
 
-    if (elapsed >= 2500 && elapsed < 8000) {
-      const letterIndex = Math.floor((elapsed - 2500) / 350);
+    // Буквы (1.2 - 3.6 сек)
+    if (elapsed >= 1200 && elapsed < 3600) {
+      const letterIndex = Math.floor((elapsed - 1200) / 150);
       if (letterIndex < 0 || letterIndex >= mainText.length) return;
       const activeLetter = splash.querySelector(`.main-text[style*="--i:${letterIndex}"]`);
       if (!activeLetter) return;
@@ -343,12 +331,13 @@ export function initSplash(force = false) {
         spark.style.setProperty('--dx', Math.cos(angle) * distance);
         spark.style.setProperty('--dy', Math.sin(angle) * distance);
         sparksContainer.appendChild(spark);
-        setTimeout(() => spark.remove(), 600);
+        setTimeout(() => spark.remove(), 300);
       }
       return;
     }
 
-    if (elapsed >= 8000 && elapsed < 9500) {
+    // Прямоугольник (3.6 - 4.5 сек)
+    if (elapsed >= 3600 && elapsed < 4500) {
       const randomX = 1050 + Math.random() * 60;
       const randomY = 115 + Math.random() * 50;
       const screenX = rect.left + (randomX / viewBoxW) * rect.width;
@@ -363,12 +352,12 @@ export function initSplash(force = false) {
         spark.style.setProperty('--dx', Math.cos(angle) * distance);
         spark.style.setProperty('--dy', Math.sin(angle) * distance);
         sparksContainer.appendChild(spark);
-        setTimeout(() => spark.remove(), 600);
+        setTimeout(() => spark.remove(), 300);
       }
     }
-  }, 30);
+  }, 20);
 
-  // Завершение заставки
+  // Завершение заставки ровно через 4.5 секунды (4500 мс)
   setTimeout(() => {
     splash.classList.add('fade-out');
     clearInterval(sparksInterval);
@@ -376,6 +365,6 @@ export function initSplash(force = false) {
       splash.remove();
       const s = document.getElementById('plasma-splash-styles');
       if (s) s.remove();
-    }, 800);
-  }, 10000); 
+    }, 500); // Затухание 0.5 сек
+  }, 4500); 
 }

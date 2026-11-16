@@ -14,15 +14,57 @@ import { renderPartsTable, applyPartsFilter, updateSelectionUI } from './parts-t
 export { loadFiles, renderPartsTable, updateSelectionUI };
 
 export function renderJobSelect(){
-  const sel = $('jobSelect'); if(!sel) return;
-  sel.innerHTML = '';
-  for(const j of state.jobs){
-    const partsCount = j.parts.reduce((s, p) => s + (p.qty || 0), 0);
-    const opt = document.createElement('option');
-    opt.value = j.id;
-    opt.textContent = `${j.name} — ${partsCount} дет.`;
-    if(j.id === state.activeJobId) opt.selected = true;
-    sel.appendChild(opt);
+  const sel = $('jobSelect'); 
+  if(sel) {
+    sel.innerHTML = '';
+    for(const j of state.jobs){
+      const partsCount = j.parts.reduce((s, p) => s + (p.qty || 0), 0);
+      const opt = document.createElement('option');
+      opt.value = j.id;
+      opt.textContent = `${j.name} — ${partsCount} дет.`;
+      if(j.id === state.activeJobId) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  // ═══ ВКЛАДКИ ЗАДАНИЙ НАД ХОЛСТОМ ═══
+  const tabsBar = document.getElementById('jobTabsBar');
+  if (tabsBar) {
+    tabsBar.innerHTML = '';
+
+    for (const j of state.jobs) {
+      const tab = document.createElement('div');
+      tab.className = 'job-tab' + (j.id === state.activeJobId ? ' active' : '');
+      tab.textContent = `📁 ${j.name}`;
+      
+      // Переключение по клику
+      tab.onclick = () => {
+        if (j.id !== state.activeJobId) {
+          switchJob(j.id);
+          refreshJobView();
+          setStatus(`Активное задание: ${j.name}`);
+        }
+      };
+      
+      tabsBar.appendChild(tab);
+    }
+
+    // Кнопка "+" для создания нового задания
+    const addBtn = document.createElement('div');
+    addBtn.className = 'job-tab-add';
+    addBtn.textContent = '+';
+    addBtn.title = 'Создать новое задание';
+    addBtn.onclick = () => {
+      const suggested = `Задание №${state.jobs.length + 1}`;
+      const name = prompt('Название нового задания:', suggested);
+      if (name === null) return;
+      const job = createJob((name || '').trim() || suggested);
+      switchJob(job.id);
+      refreshJobView();
+      setStatus(`Создано: ${job.name}`);
+    };
+    
+    tabsBar.appendChild(addBtn);
   }
 }
 

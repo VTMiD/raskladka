@@ -13,7 +13,7 @@ import { pushHistory } from './history.js';
 import { initSplash } from './splash.js';
 import { openStampSettingsModal } from './report/sheet-stamp-settings.js';
 import { exportSpecToCSV } from './report/report-csv.js';
-import { openJobsModal, closeJobsModal } from './parts.js'; // <--- ИМПОРТ ДОБАВЛЕН
+import { openJobsModal, closeJobsModal } from './parts.js';
 
 (function injectGlobalStyles() {
     if (document.getElementById('customDropdownStyles')) return;
@@ -347,6 +347,8 @@ function initTopbarUI() {
             { type: 'sep' },
             { action: 'set-paths', icon: '📁', title: 'Настройки хранения данных', desc: 'Указать пути к папкам для деталей, листов, остатков и проектов', serverOnly: true, serverTip: 'Пути используются для сохранения файлов на диск.' },
             { type: 'sep' },
+            { action: 'restore-autosave', icon: '💾', title: 'Восстановить автосохранение', desc: 'Загрузить последнюю сохраненную версию' },
+            { type: 'sep' },
             { action: 'theme-default', icon: '🎨', title: 'Тема: Классическая', desc: 'Тёмный фон, красные контуры' },
             { action: 'theme-sheetcam', icon: '🎨', title: 'Тема: SheetCam', desc: 'Коричневый лист, белые детали' },
             { type: 'sep' },
@@ -356,6 +358,15 @@ function initTopbarUI() {
         onAction: (action, isChecked) => {
             if (action === 'stamp-settings') openStampSettingsModal();
             else if (action === 'set-paths') openPathModal();
+            else if (action === 'restore-autosave') {
+                import('./autosave.js').then(m => {
+                    if (m.hasPendingAutosave()) {
+                        m.showAutosavePopup();
+                    } else {
+                        setStatus('Нет доступных автосохранений');
+                    }
+                });
+            }
             else if (action === 'theme-default') {
                 localStorage.setItem('raskladka.theme', 'default');
                 draw();

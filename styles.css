@@ -226,7 +226,7 @@ body.printing #printArea{display:block!important}@page{margin:15mm}}
   border-radius:3px;
   padding:2.5mm 3mm 2mm;
   background:#fff;
-  height:50mm; /* Увеличено с 40mm */
+  height:50mm;
   box-sizing:border-box;
   display:flex;
   flex-direction:column;
@@ -234,7 +234,7 @@ body.printing #printArea{display:block!important}@page{margin:15mm}}
   position:relative;
 }
 .label-empty{
-  height:50mm; /* Увеличено с 40mm */
+  height:50mm;
   border:1px dashed #ccc;
   border-radius:3px;
   background:#fafafa;
@@ -346,7 +346,6 @@ body.printing #printArea{display:block!important}@page{margin:15mm}}
   border:1px solid #9ed5a4; margin-top:4px;
 }
 
-/* ---------- Плавающая панель «Линейка» над холстом ---------- */
 #measureBar{
   position: absolute;
   top: 12px;
@@ -379,7 +378,6 @@ body.printing #printArea{display:block!important}@page{margin:15mm}}
 }
 #measureBar #btnMeasure.active:hover{ background: #b07000; }
 
-/* ---------- Плавающая панель «Рез листа» над холстом ---------- */
 #cutBar{
   position: absolute;
   top: 12px;
@@ -421,9 +419,6 @@ body.printing #printArea{display:block!important}@page{margin:15mm}}
   white-space: nowrap;
 }
 
-/* ================================================================
-   Кнопка отметки остатка
-   ================================================================ */
 #btnMarkRemnant.active {
   background: #2a9a3c;
   border-color: #1a6a25;
@@ -434,9 +429,6 @@ body.printing #printArea{display:block!important}@page{margin:15mm}}
   background: #1a6a25;
 }
 
-/* ================================================================
-   QR в этикетках деталей
-   ================================================================ */
 .label-qr-abs {
   position: absolute;
   bottom: 1mm;
@@ -447,13 +439,10 @@ body.printing #printArea{display:block!important}@page{margin:15mm}}
 }
 .label-qr-abs svg { width: 100%; height: 100%; display: block; }
 
-/* ================================================================
-   Этикетки остатков — Только крупный QR-код
-   ================================================================ */
 .remnant-code-row {
   display: flex;
   align-items: center;
-  justify-content: center; /* Центрируем QR-код */
+  justify-content: center;
   padding: 2mm 0;
   flex: 1 1 auto;
   min-height: 0;
@@ -461,11 +450,11 @@ body.printing #printArea{display:block!important}@page{margin:15mm}}
 }
 
 .remnant-qr {
-  width: 42mm;  /* Огромный QR-код — 42х42 мм */
+  width: 42mm;
   height: 42mm;
   flex-shrink: 0;
-  background: #fff; /* Белый фон для контраста */
-  padding: 1mm;     /* Дополнительный отступ */
+  background: #fff;
+  padding: 1mm;
 }
 
 .remnant-qr svg { 
@@ -475,7 +464,7 @@ body.printing #printArea{display:block!important}@page{margin:15mm}}
 }
 
 tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }
-/* ---------- Фильтр таблицы деталей ---------- */
+
 .parts-filter {
   display: flex;
   gap: 8px;
@@ -527,7 +516,7 @@ tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }
   color: #06c;
   font-weight: 600;
 }
-/* ---------- Подсветка совпадений в поиске ---------- */
+
 #partsTableWrap td[data-edit="name"] mark {
   background: #fff3a0;
   color: #000;
@@ -535,7 +524,7 @@ tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }
   border-radius: 2px;
   font-weight: 600;
 }
-/* ---------- Найденная строка (поиск как навигатор) ---------- */
+
 #partsTableWrap tr.filter-hit {
   background: #fff3a0 !important;
   box-shadow: inset 0 0 0 2px #e0a800;
@@ -544,7 +533,6 @@ tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }
   background: #ffe680 !important;
 }
 
-/* ---------- Автосохранение ---------- */
 #autosaveBanner {
   display: flex;
   align-items: center;
@@ -609,14 +597,12 @@ tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }
   font-weight: 600;
 }
 
-/* ---------- Подсветка строки при выделении детали на холсте ---------- */
 #partsTableWrap tr.flash-scroll {
   background: #fff3a0 !important;
   box-shadow: inset 0 0 0 2px #e0a800;
   transition: background .3s, box-shadow .3s;
 }
 
-/* ---------- Каталог остатков ---------- */
 .remnant-catalog-toolbar {
   display: flex;
   gap: 10px;
@@ -688,7 +674,6 @@ tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }
   background: #ffe3e3;
 }
 
-/* ---------- Модалка «Отчёты» ---------- */
 .reports-choice-list {
   display: flex;
   flex-direction: column;
@@ -736,7 +721,6 @@ tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }
   line-height: 1.3;
 }
 
-/* ─── Стили для печати этикеток ─── */
 .part-labels-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -754,10 +738,9 @@ tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }
   page-break-inside: avoid;
   break-inside: avoid;
   box-sizing: border-box;
-  height: 130mm; /* Высота под А4 (2 ряда по 130мм + отступы) */
+  height: 130mm;
 }
 
-/* Шапка этикетки (название + строка с инфой) */
 .part-label-header {
   text-align: center;
   width: 100%;
@@ -806,9 +789,8 @@ tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }
   margin-top: 0.5mm;
 }
 
-/* ─── БЛОК ЧЕРТЕЖА ─── */
 .part-label-drawing {
-  flex: 1 1 auto; /* Занимает всё свободное место */
+  flex: 1 1 auto;
   min-height: 0;
   width: 100%;
   display: flex;
@@ -819,11 +801,10 @@ tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }
   overflow: hidden;
 }
 
-/* ─── БЛОК QR-КОДА ─── */
 .part-label-qr-big {
   flex: 0 0 auto;
   width: 100%;
-  height: 45mm; /* Высота QR-кода */
+  height: 45mm;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -836,7 +817,6 @@ tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }
   display: block;
 }
 
-/* Оставляем для совместимости (остатки/листы) */
 .part-label-content { display: flex; width: 100%; gap: 4mm; align-items: center; }
 .part-label-qr { width: 52mm; height: 52mm; flex-shrink: 0; }
 .part-label-qr svg { width: 100%; height: 100%; display: block; }
@@ -846,7 +826,6 @@ tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }
 .part-label-info b { color: #000; font-size: 14px; }
 .part-label-date { font-size: 10px; color: #666; text-align: right; flex-shrink: 0; border-top: 1px solid #eee; padding-top: 1mm; }
 
-/* Фиксация страниц для печати */
 .pdf-page {
   page-break-after: always !important;
   break-after: page !important;
@@ -905,10 +884,55 @@ tr.flash-scroll { background: #fff3cd !important; transition: background .3s; }
   50% { opacity: 0.65; transform: scale(1.03); }
 }
 
-/* ─── Функции, недоступные без локального сервера (js/utils.js → applyServerGating) ─── */
 .so-disabled {
   opacity: 0.45 !important;
   filter: grayscale(1);
   cursor: not-allowed !important;
 }
 .so-disabled:hover { opacity: 0.6 !important; }
+
+/* ═══ ВКЛАДКИ ЗАДАНИЙ ═══ */
+.job-tab {
+  padding: 4px 12px;
+  background: #2b5a8a;
+  border: 1px solid #4a7fb5;
+  border-radius: 4px;
+  color: #a0b8d0;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+  opacity: 0.8;
+}
+.job-tab:hover {
+  background: #3a70a5;
+  color: #fff;
+  opacity: 1;
+}
+.job-tab.active {
+  background: #0050a0;
+  border: 2px solid #00aaff;
+  color: #ffffff;
+  font-weight: bold;
+  opacity: 1;
+  box-shadow: 0 0 10px rgba(0, 170, 255, 0.5);
+  transform: scale(1.05);
+  margin: 0 2px;
+}
+.job-tab-add {
+  padding: 4px 10px;
+  background: #1e1e1e;
+  border: 1px dashed #4a7fb5;
+  border-radius: 4px;
+  color: #cfe4ff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 1;
+  transition: all 0.15s;
+}
+.job-tab-add:hover {
+  background: #2b5a8a;
+  border-style: solid;
+  color: #fff;
+}

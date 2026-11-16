@@ -180,13 +180,17 @@ function performTransfer(sel, targetJobId) {
       if (sheet) sheet.placed.splice(sp.placedIdx, 1);
     }
 
-    // 4. Переключаемся на целевое задание
-    m.switchJob(targetJobId);
+    // 4. ОСТАЕМСЯ В ТЕКУЩЕМ ЗАДАНИИ
+    // Сбрасываем выделение, так как детали больше нет на холсте
+    state.selectedPart = null;
+    state.selectedParts = [];
+    state.selectedRows.clear();
 
-    // 5. Обновляем интерфейс
+    // 5. Обновляем интерфейс текущего задания
     import('./parts.js').then(pm => {
       pm.renderPartsTable();
       pm.renderJobSelect();
+      pm.updateSelectionUI();
       import('./canvas.js').then(cm => cm.draw());
       import('./report/report.js').then(rm => rm.updateReport());
     });

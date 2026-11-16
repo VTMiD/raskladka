@@ -182,9 +182,12 @@ export function initCoordsPanel() {
 export function syncCoordsPanel() {
   if (!panel) return;
 
-  // Если ничего не выделено — блокируем поля
+  // Находим контейнер с инпутами (он есть в HTML)
+  const wrap = document.getElementById('coordInputsWrap');
+
+  // Если ничего не выделено — блокируем поля и делаем их тусклыми
   if (!state.selectedPart) {
-    panel.style.opacity = '0.6';
+    if (wrap) wrap.style.opacity = '0.6';
     if (document.activeElement !== inputX) inputX.value = '';
     if (document.activeElement !== inputY) inputY.value = '';
     if (inputAngle && document.activeElement !== inputAngle) inputAngle.value = '0';
@@ -200,7 +203,7 @@ export function syncCoordsPanel() {
   const pl = sheet && sheet.placed[placedIdx];
   
   if (!pl) {
-    panel.style.opacity = '0.6';
+    if (wrap) wrap.style.opacity = '0.6';
     inputX.disabled = true;
     inputY.disabled = true;
     if (inputAngle) inputAngle.disabled = true;
@@ -208,7 +211,7 @@ export function syncCoordsPanel() {
   }
 
   // Активируем поля
-  panel.style.opacity = '1';
+  if (wrap) wrap.style.opacity = '1';
   inputX.disabled = false;
   inputY.disabled = false;
   if (inputAngle) inputAngle.disabled = false;

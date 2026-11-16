@@ -1,9 +1,9 @@
 import { $, setStatus } from './utils.js';
 
 const KEY = 'raskladka.autosave.v1';
-const MAX_SIZE = 4 * 1024 * 1024;   // 4 МБ — предел для localStorage
-const INTERVAL_MS = 15000;           // автосохранение каждые 15 сек
-const DEBOUNCE_MS = 2000;            // через 2 сек после pushHistory
+const MAX_SIZE = 4 * 1024 * 1024;
+const INTERVAL_MS = 15000;
+const DEBOUNCE_MS = 2000;
 
 let _intervalId = null;
 let _debounceId = null;
@@ -111,8 +111,14 @@ export function hasPendingAutosave(){
 
 export async function restoreFromAutosave(){
   const pending = hasPendingAutosave();
-  if (!pending) return false;
-  if (!window.ProjectHooks || typeof window.ProjectHooks.restore !== 'function') return false;
+  if (!pending) {
+    alert('Файл автосохранения не найден в памяти браузера.');
+    return false;
+  }
+  if (!window.ProjectHooks || typeof window.ProjectHooks.restore !== 'function') {
+    alert('Ошибка: модуль восстановления (ProjectHooks) не подключен.');
+    return false;
+  }
   try {
     await window.ProjectHooks.restore(pending.state);
     _lastSavedAt = pending.savedAt;
@@ -121,6 +127,7 @@ export async function restoreFromAutosave(){
     return true;
   } catch (e){
     console.error('[autosave] restore failed:', e);
+    alert('Ошибка при восстановлении автосохранения:\n' + e.message);
     return false;
   }
 }
@@ -132,18 +139,53 @@ export function discardAutosave(){
   updateIndicator();
 }
 
-function _showBanner(savedAt){
-  const el = document.getElementById('autosaveBanner');
-  if (!el) return;
-  const dateEl = document.getElementById('autosaveBannerDate');
-  if (dateEl) dateEl.textContent = _fmtTime(savedAt);
-  el.style.display = 'flex';
-}
+// ═══ ВСПЛЫВАЮЩЕЕ ОКНО АВТОСОХРАНЕНИЯ ═══
+export function showAutosavePopup() {
+  const pending = hasPendingAutosave();
+  if (!pending) {
+    alert('Автосохранение не найдено. Подождите 15 секунд, пока программа его создаст, или внесите изменения в проект.');
+    return;
+  }
 
-function _hideBanner(){
-  const el = document.getElementById('autosaveBanner');
-  if (!el) return;
-  el.style.display = 'none';
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay active';
+  modal.style.zIndex = '2000';
+  modal.innerHTML = `
+    <div class="modal-window" style="width:400px">
+      <div class="modal-header" style="background:#fff8e1;border-bottom-color:#f0c419;color:#6a4c00">
+        <span>💾 Найдено автосохранение</span>
+        <button class="close-btn" id="btnCloseAutoPopup" style="color:#6a4c00">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:15px; margin-bottom:12px; color:#333;">Автосохранение от <b>${_fmtTime(pending.savedAt)}</b></p>
+        <p style="font-size:13px; color:#555;">Хотите восстановить проект или удалить автосохранение?</p>
+      </div>
+      <div class="modal-footer">
+        <button id="btnPopupRestore" class="primary">Восстановить</button>
+        <button id="btnPopupDiscard" class="danger">Удалить</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  modal.querySelector('#btnCloseAutoPopup').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+
+  modal.querySelector('#btnPopupRestore').onclick = async () => {
+    close();
+    const ok = await restoreFromAutosave();
+    if (ok) {
+      setStatus('Проект восстановлен из автосохранения');
+    }
+  };
+
+  modal.querySelector('#btnPopupDiscard').onclick = () => {
+    if (!confirm('Удалить автосохранение? Текущая работа останется открытой.')) return;
+    close();
+    discardAutosave();
+    setStatus('Автосохранение удалено');
+  };
 }
 
 export function initAutosave(){
@@ -162,36 +204,6 @@ export function initAutosave(){
   window.addEventListener('beforeunload', () => {
     try { saveNow(); } catch (e){}
   });
-
-  const pending = hasPendingAutosave();
-  if (pending) _showBanner(pending.savedAt);
-
-  const btnRestore = document.getElementById('btnAutosaveRestore');
-  if (btnRestore && !btnRestore._bound){
-    btnRestore._bound = true;
-    btnRestore.addEventListener('click', async () => {
-      const ok = await restoreFromAutosave();
-      _hideBanner();
-      setStatus(ok ? 'Проект восстановлен из автосохранения' : 'Не удалось восстановить автосохранение');
-    });
-  }
-  const btnDiscard = document.getElementById('btnAutosaveDiscard');
-  if (btnDiscard && !btnDiscard._bound){
-    btnDiscard._bound = true;
-    btnDiscard.addEventListener('click', () => {
-      if (!confirm('Удалить автосохранение? Текущая работа останется открытой.')) return;
-      discardAutosave();
-      _hideBanner();
-      setStatus('Автосохранение удалено');
-    });
-  }
-  const btnClose = document.getElementById('btnAutosaveClose');
-  if (btnClose && !btnClose._bound){
-    btnClose._bound = true;
-    btnClose.addEventListener('click', () => {
-      _hideBanner();
-    });
-  }
 
   updateIndicator();
 }
