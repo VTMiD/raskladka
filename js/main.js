@@ -15,7 +15,7 @@ import {
   loadProfiles, getActiveProfile, applyParams, renderProfileSelect,
   bindProfileUI, updateGaParamsUI, updateStockDxfUI, updateStockMiniInfo,
 } from './params.js';
-import { bindPartsUI, bindJobUI, renderPartsTable, renderJobSelect } from './parts.js';
+import { bindPartsUI, bindJobUI, renderPartsTable, renderJobSelect, openJobsModal } from './parts.js';
 import { bindAutofitUI } from './autofit.js';
 import { bindDxfExportUI } from './dxf-export.js';
 import { bindExportsUI } from './exports.js';
@@ -29,7 +29,7 @@ import { initDialogs } from './dialogs/dialogs.js';
 import { installProjectHooks } from './project-hooks.js';
 import { bindLayersUI } from './layers.js';
 import { initSplash } from './splash.js';
-import { initHelp } from './help/help.js'; // <--- ДОБАВЛЕНО
+import { initHelp } from './help/help.js';
 
 function initNestRunner() {
   const btnNest = $('btnNest');
@@ -166,7 +166,7 @@ safeBind('initProjectIO',        initProjectIO);
 safeBind('initAutosave',         initAutosave);
 safeBind('bindHistoryUI',        bindHistoryUI);
 safeBind('bindCutUI',            bindCutUI);
-safeBind('initHelp',             initHelp); // <--- ДОБАВЛЕНО
+safeBind('initHelp',             initHelp);
 
 try { updateGaParamsUI(); } catch (_) {}
 try { updateStockDxfUI(); } catch (_) {}
@@ -187,8 +187,6 @@ if (!HAS_OPEN_PICKER) setStatus('⚠ Запоминание папки — то�
 
 console.log('[init] Приложение запущено');
 
-// Определяем, запущен ли локальный сервер (server.js), и блокируем серверные функции.
-// Выполняется после инициализации UI, чтобы пункты меню уже существовали в DOM.
 probeServer().then(() => {
   applyServerGating();
   if (isServerAvailable()) syncSavedPathsToServer();
@@ -196,7 +194,16 @@ probeServer().then(() => {
 
 
 initSplash();
-// Находим кнопку и привязываем к ней вызов модуля
+
+// ═══ ПРИВЯЗКА КНОПКИ "ЗАДАНИЯ" ═══
+const btnJobs = document.getElementById('btnOpenJobsModal');
+if (btnJobs) {
+  btnJobs.addEventListener('click', () => {
+    openJobsModal();
+  });
+}
+
+// ═══ ПРИВЯЗКА КНОПКИ "В ЦЕХ" ═══
 const btnShipment = document.getElementById('btnShipment');
 if (btnShipment) {
   btnShipment.addEventListener('click', () => {

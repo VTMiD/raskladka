@@ -62,6 +62,7 @@ export function openImportListModal() {
                 } catch (err) { console.warn('Ошибка парсинга', file.name, err); }
             }
 
+            state.selectedRows.clear();
             renderPartsTable();
             draw();
             pushHistory();

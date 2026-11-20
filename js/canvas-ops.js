@@ -8,7 +8,7 @@ import { updateReport } from './report/report.js';
 import { refreshPartsStatus } from './part-status.js';
 import { pushHistory } from './history.js';
 import { setStatus } from './utils.js';
-import { polysCollide, isPartInsideSheetPolygon } from './geometry.js';
+import { polysCollide, isPartInsideSheetPolygon, rotatePart } from './geometry.js';
 
 function _findFreeSpotForCopy(sheet, orig, W, H, buffer) {
   const params = readParams();

@@ -4,6 +4,8 @@ import { state } from './state.js';
 import { draw } from './canvas.js';
 import { placedCountsByIdx, statusOf, refreshPartsStatus } from './part-status.js';
 import { pushHistory } from './history.js';
+// Импортируем функцию открытия окна
+import { openJobsModal } from './parts.js'; 
 
 // ─── Авто-выделение содержимого поля при фокусе ───
 function attachAutoSelect(el){
@@ -218,6 +220,41 @@ export function renderPartsTable(){
       updateSelectionUI();
     });
 
+    // ═══ ОБРАБОТЧИК ПКМ ДЛЯ ТАБЛИЦЫ ═══
+    tr.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const idx = +tr.dataset.row;
+      
+      // Если строка не выделена, выделяем её
+      if (!state.selectedRows.has(idx)) {
+        state.selectedRows.clear();
+        state.selectedRows.add(idx);
+        updateSelectionUI();
+      }
+
+      // Показываем контекстное меню
+      const menu = document.getElementById('contextMenu');
+      if (!menu) return;
+      
+      menu.innerHTML = '';
+      menu.style.display = 'block';
+      
+      const item = document.createElement('div');
+      item.className = 'context-menu-item';
+      item.textContent = `📁 Перенести выделенные (${state.selectedRows.size}) в задание...`;
+      item.onclick = () => {
+        menu.style.display = 'none';
+        // Вызываем НАШУ новую функцию
+        openJobsModal(); 
+      };
+      
+      menu.appendChild(item);
+      
+      // Позиционируем меню
+      menu.style.left = Math.min(e.clientX, window.innerWidth - 300) + 'px';
+      menu.style.top = Math.min(e.clientY, window.innerHeight - 100) + 'px';
+    });
+
     let dragStartTarget = null;
     tr.setAttribute('draggable', 'true');
     tr.addEventListener('mousedown', e => { dragStartTarget = e.target; });
@@ -355,6 +392,11 @@ function removePartByIndex(idx){
   }
   state.selectedRows.clear();
   for(const s of ns) state.selectedRows.add(s);
+
+  // ─── Сброс выделения на холсте, т.к. placedIdx сдвинулись ───
+  state.selectedPart = null;
+  state.selectedParts = [];
+
   renderPartsTable();
   draw();
 }

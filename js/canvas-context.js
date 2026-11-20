@@ -3,6 +3,7 @@ import { state } from './state.js';
 import { printPartDrawing, printPartsDrawing } from './report/report.js';
 import { setStatus } from './utils.js';
 import { pushHistory } from './history.js';
+import { openJobsModal } from './parts.js'; // <--- ИМПОРТ НОВОЙ ФУНКЦИИ
 import {
   rotateSelected, mirrorSelected, removePlacedPart, duplicatePlacedPart,
   toggleFixSelected, unfixAllPlaced,
@@ -129,76 +130,6 @@ function collectUniqueSelectedParts() {
   return uniqueParts;
 }
 
-// ─── Логика переноса деталей в задание ───
-function performTransfer(sel, targetJobId) {
-  import('./state.js').then(m => {
-    const targetJob = state.jobs.find(j => j.id === targetJobId);
-    if (!targetJob) return;
-    
-    const currentJob = m.getActiveJob();
-    if (!currentJob) return;
-
-    // 1. Группируем выделенные экземпляры по partIdx
-    const countByPart = {};
-    for (const sp of sel) {
-      const sheet = state.sheets[sp.sheetIdx];
-      if (!sheet) continue;
-      const pl = sheet.placed[sp.placedIdx];
-      if (!pl) continue;
-      const pi = pl.partIdx;
-      if (!countByPart[pi]) countByPart[pi] = 0;
-      countByPart[pi]++;
-    }
-
-    // 2. Переносим: для каждой детали создаём копию в целевом задании с нужным qty
-    for (const [partIdxStr, count] of Object.entries(countByPart)) {
-      const partIdx = parseInt(partIdxStr, 10);
-      const part = currentJob.parts[partIdx];
-      if (!part) continue;
-
-      targetJob.parts.push({ ...part, qty: count });
-
-      part.qty = (part.qty || 1) - count;
-      if (part.qty <= 0) {
-        const removedIdx = partIdx;
-        currentJob.parts.splice(removedIdx, 1);
-        for (const sh of currentJob.sheets) {
-          for (const p of sh.placed) {
-            if (p.partIdx > removedIdx) p.partIdx--;
-          }
-        }
-      }
-    }
-
-    // 3. Удаляем выделенные экземпляры с холста
-    const sortedSel = [...sel].sort((a, b) => {
-      if (a.sheetIdx !== b.sheetIdx) return b.sheetIdx - a.sheetIdx;
-      return b.placedIdx - a.placedIdx;
-    });
-    for (const sp of sortedSel) {
-      const sheet = state.sheets[sp.sheetIdx];
-      if (sheet) sheet.placed.splice(sp.placedIdx, 1);
-    }
-
-    // 4. ОСТАЕМСЯ В ТЕКУЩЕМ ЗАДАНИИ
-    // Сбрасываем выделение, так как детали больше нет на холсте
-    state.selectedPart = null;
-    state.selectedParts = [];
-    state.selectedRows.clear();
-
-    // 5. Обновляем интерфейс текущего задания
-    import('./parts.js').then(pm => {
-      pm.renderPartsTable();
-      pm.renderJobSelect();
-      pm.updateSelectionUI();
-      import('./canvas.js').then(cm => cm.draw());
-      import('./report/report.js').then(rm => rm.updateReport());
-    });
-    
-    setStatus(`Перенесено деталей: ${sel.length} в «${targetJob.name}»`);
-  });
-}
-
 export function showContextMenu(screenX, screenY, hit){
   const el = contextMenuEl();
   if(!el) return;
@@ -238,11 +169,11 @@ export function showContextMenu(screenX, screenY, hit){
       () => showLayerPicker()
     ));
 
-    // ═══ ПУНКТ: ПЕРЕНЕСТИ В ЗАДАНИЕ (выбор из списка) ═══
+    // ═══ ВЫЗОВ НАШЕЙ НОВОЙ ФУНКЦИИ ═══
     el.appendChild(buildContextMenuItem(
       '📁 Перенести в задание...',
       () => {
-        // 1. Собираем выделенные экземпляры с холста
+        // Собираем выделенные экземпляры с холста
         let sel = [];
         if (state.selectedParts && state.selectedParts.length) {
           sel = state.selectedParts.map(sp => ({ sheetIdx: sp.sheetIdx, placedIdx: sp.placedIdx }));
@@ -253,74 +184,8 @@ export function showContextMenu(screenX, screenY, hit){
           setStatus('Сначала выделите детали');
           return;
         }
-
-        // 2. Собираем список заданий (кроме текущего)
-        const currentJobId = state.activeJobId;
-        const otherJobs = state.jobs.filter(j => j.id !== currentJobId);
-
-        // 3. Создаём модальное окно для выбора
-        const modal = document.createElement('div');
-        modal.className = 'modal-overlay active';
-        modal.style.zIndex = '2000';
-        
-        const jobButtons = otherJobs.map(j => `
-          <button class="job-select-btn" data-id="${j.id}" style="display:flex; align-items:center; gap:10px; width:100%; padding:12px; margin-bottom:8px; border:1px solid #ccc; background:#fff; border-radius:4px; cursor:pointer; text-align:left; transition:background .15s;">
-            <span style="font-size:20px;">📁</span>
-            <div style="flex:1;">
-              <div style="font-weight:bold; font-size:14px; color:#004a99;">${j.name}</div>
-              <div style="font-size:11px; color:#888;">Деталей: ${j.parts.reduce((s, p) => s + (p.qty || 0), 0)}</div>
-            </div>
-          </button>
-        `).join('');
-
-        modal.innerHTML = `
-          <div class="modal-window" style="width:400px">
-            <div class="modal-header" style="background:#eaf4ff;border-bottom-color:#c9e0f5;color:#004a99">
-              <span>📁 Перенести в задание</span>
-              <button class="close-btn" id="btnCloseJobPicker" style="color:#004a99">✕</button>
-            </div>
-            <div class="modal-body" style="padding:15px; max-height: 400px; overflow-y: auto;">
-              ${jobButtons || '<div style="text-align:center;color:#888;padding:20px;">Нет других заданий. Создайте новое.</div>'}
-              <button id="btnCreateNewJobFromPicker" style="width:100%; padding:10px; margin-top:10px; background:#eaf4ff; border:1px dashed #4a90d9; border-radius:4px; cursor:pointer; color:#004a99; font-weight:bold;">+ Создать новое задание</button>
-            </div>
-            <div class="modal-footer">
-              <button id="btnCancelJobPicker">Отмена</button>
-            </div>
-          </div>`;
-
-        document.body.appendChild(modal);
-
-        // Обработчики
-        const close = () => modal.remove();
-        
-        modal.querySelector('#btnCloseJobPicker').onclick = close;
-        modal.querySelector('#btnCancelJobPicker').onclick = close;
-        modal.addEventListener('click', e => { if (e.target === modal) close(); });
-
-        // Создать новое задание
-        modal.querySelector('#btnCreateNewJobFromPicker').onclick = () => {
-          close();
-          const defaultName = `Задание №${state.jobs.length + 1}`;
-          const name = prompt('Название нового задания:', defaultName);
-          if (name === null) return;
-          const finalName = (name || '').trim() || defaultName;
-          
-          import('./state.js').then(m => {
-            const newJob = m.createJob(finalName);
-            performTransfer(sel, newJob.id);
-          });
-        };
-
-        // Выбор существующего задания
-        modal.querySelectorAll('.job-select-btn').forEach(btn => {
-          btn.onmouseover = () => btn.style.background = '#eaf4ff';
-          btn.onmouseout = () => btn.style.background = '#fff';
-          btn.onclick = () => {
-            const jobId = btn.dataset.id;
-            close();
-            performTransfer(sel, jobId);
-          };
-        });
+        // Вызываем новое окно
+        openJobsModal();
       }
     ));
 
