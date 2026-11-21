@@ -348,10 +348,12 @@ export function openDeleteJobDialog(jobId) {
     return;
   }
 
+  // Считаем, сколько деталей этого задания разложено на листах
   const placedCount = (job.sheets || []).reduce(
     (s, sh) => s + (sh.placed || []).length, 0
   );
 
+  // Если деталей нет — просто подтверждение и удаление
   if (placedCount === 0) {
     if (!confirm(`Удалить задание «${job.name}»?`)) return;
     deleteJob(jobId);
@@ -366,6 +368,7 @@ export function openDeleteJobDialog(jobId) {
     return;
   }
 
+  // Есть разложенные детали — открываем диалог
   const otherJobs = state.jobs.filter(j => j.id !== jobId);
 
   const modal = document.createElement('div');
@@ -385,6 +388,7 @@ export function openDeleteJobDialog(jobId) {
         </p>
 
         <div style="display:flex; flex-direction:column; gap:10px;">
+          
           <div style="border:1px solid #c9e0f5; background:#eaf4ff; border-radius:6px; padding:10px 12px;">
             <div style="font-weight:600; color:#004a99; margin-bottom:6px;">📁 Перенести детали в другое задание</div>
             <div style="display:flex; gap:8px; align-items:center;">
@@ -395,10 +399,13 @@ export function openDeleteJobDialog(jobId) {
                 ➡ Перенести и закрыть
               </button>
             </div>
-            <div class="hint" style="margin-top:6px; color:#004a99;">
-              Все разложенные детали будут перемещены в выбранное задание, после чего это задание удалится.
-            </div>
           </div>
+
+          <!-- ═══ НОВАЯ КНОПКА: В СПИСОК ДЛЯ РАСПРЕДЕЛЕНИЯ ═══ -->
+          <button id="btnUnplaceAndDelete" style="padding:10px 12px; text-align:left; background:#f0f9ec; border:1px solid #9ed5a4; color:#1a6a25; border-radius:6px; font-size:13px; cursor:pointer;">
+            📋 <b>Перенести в список для распределения</b><br>
+            <span style="font-size:11px; color:#2a6a30;">Детали станут неразложенными и перейдут в активное задание.</span>
+          </button>
 
           <button id="btnDeleteJobForce" class="danger" style="padding:10px 12px; text-align:left; background:#fdeaea; border:1px solid #f5c2c2; color:#a00; border-radius:6px; font-size:13px;">
             🗑 <b>Удалить задание вместе с деталями</b><br>
@@ -417,6 +424,7 @@ export function openDeleteJobDialog(jobId) {
   modal.querySelector('#btnCancelDeleteJob').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
 
+  // 1. Перенос и удаление
   modal.querySelector('#btnTransferAndDelete').onclick = () => {
     const targetId = modal.querySelector('#delJobTarget').value;
     const targetJob = state.jobs.find(j => j.id === targetId);
@@ -436,6 +444,42 @@ export function openDeleteJobDialog(jobId) {
     setStatus(`Детали перенесены в «${targetJob.name}», задание «${job.name}» закрыто`);
   };
 
+  // 2. ═══ ЛОГИКА ДЛЯ НОВОЙ КНОПКИ ═══
+  modal.querySelector('#btnUnplaceAndDelete').onclick = () => {
+    if (!confirm(`Все ${placedCount} разложенных деталей станут неразложенными и перейдут в список активного задания. Задание «${job.name}» будет удалено. Продолжить?`)) return;
+
+    // Определяем целевое (активное) задание, в которое вернём детали
+    let targetJob = getActiveJob();
+    if (targetJob.id === jobId) {
+      // Если удаляем активное задание, берём первое из оставшихся
+      targetJob = state.jobs.find(j => j.id !== jobId);
+    }
+
+    // Возвращаем детали в список целевого задания
+    for (const part of job.parts) {
+      targetJob.parts.push({ ...part });
+    }
+
+    // Удаляем задание (листы и разложенные детали просто уничтожаются)
+    deleteJob(jobId);
+
+    // Переключаемся на целевое задание и обновляем вид
+    if (targetJob.id !== state.activeJobId) {
+      switchJob(targetJob.id);
+    }
+    
+    if (targetJob.paramsSnapshot) {
+      try { applyParams(targetJob.paramsSnapshot); } catch (_) {}
+    }
+
+    refreshJobView();
+    initHistory();
+    updateButtons();
+    close();
+    setStatus(`Задание «${job.name}» удалено, ${placedCount} дет. возвращены в список для распределения`);
+  };
+
+  // 3. Удаление без переноса
   modal.querySelector('#btnDeleteJobForce').onclick = () => {
     if (!confirm(`Точно удалить задание «${job.name}» вместе с ${placedCount} разложенными деталями?`)) return;
     deleteJob(jobId);

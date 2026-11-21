@@ -1,6 +1,7 @@
 import { $, setStatus, askFileNameWithPath, makeDestinationHint, downloadBlob, saveFileToServer } from './utils.js';
 import { state, HAS_SAVE_PICKER, FS_IDS } from './state.js';
-import { readParams, makeSafeBaseName } from './params.js';
+import { readParams, makeDxfExportName } from './params.js';
+import { getCurrentProjectName } from './project-io.js';
 import { todayIso } from './utils.js';
 
 let _hCounter = 0x100;
@@ -144,7 +145,6 @@ export function buildDxfSingleSheet(sheetIndex){
   return lines.join('\r\n') + '\r\n';
 }
 
-// ─── Сохранение с fallback на диалог браузера ────────────────
 async function saveDxfFile(text, suggestedName, pickerId, category){
   if (category) {
     const res = await saveFileToServer(category, '', suggestedName, text);
@@ -174,13 +174,30 @@ async function saveDxfFile(text, suggestedName, pickerId, category){
 export function bindDxfExportUI(){
   $('btnExport').addEventListener('click', async () => {
     if(!state.sheets.length){ alert('Сначала нажмите «Разложить»'); return; }
-    const defaultName = makeSafeBaseName();
+    
+    let rsNum = '01';
+    if (state.jobs && state.jobs.length) {
+      const idx = state.jobs.findIndex(j => j.id === state.activeJobId);
+      if (idx >= 0) rsNum = String(idx + 1).padStart(2, '0');
+    }
+    let prNum = '01';
+    try {
+      const projName = getCurrentProjectName();
+      if (projName) {
+        const m = projName.match(/^PR(\d+)/i);
+        if (m) prNum = String(m[1]).padStart(2, '0');
+      }
+    } catch (_) {}
+
+    const defaultName = makeDxfExportName(null, rsNum, prNum);
+    
     const name = await askFileNameWithPath({
       title: '💾 Сохранить все листы в DXF',
       defaultName,
       destinationHint: makeDestinationHint('sheets', ''),
       storageKey: 'dxfAll',
       saveLabel: '💾 Сохранить DXF',
+      width: 560,
     });
     if (!name) return;
     const dxfText = buildDxfAllSheets();
@@ -197,22 +214,53 @@ export function bindDxfExportUI(){
 
   $('btnExportSplit').addEventListener('click', async () => {
     if(!state.sheets.length){ alert('Сначала нажмите «Разложить»'); return; }
-    const defaultBase = makeSafeBaseName();
+    
+    let rsNum = '01';
+    if (state.jobs && state.jobs.length) {
+      const idx = state.jobs.findIndex(j => j.id === state.activeJobId);
+      if (idx >= 0) rsNum = String(idx + 1).padStart(2, '0');
+    }
+    let prNum = '01';
+    try {
+      const projName = getCurrentProjectName();
+      if (projName) {
+        const m = projName.match(/^PR(\d+)/i);
+        if (m) prNum = String(m[1]).padStart(2, '0');
+      }
+    } catch (_) {}
+
+    const defaultBase = makeDxfExportName(null, rsNum, prNum);
+    
     const base = await askFileNameWithPath({
       title: '💾 Сохранить листы в DXF (каждый отдельно)',
       defaultName: defaultBase,
       destinationHint: makeDestinationHint('sheets', ''),
       storageKey: 'dxfSplit',
       saveLabel: '💾 Сохранить по листам',
+      width: 560,
     });
     if (!base) return;
+    
     setStatus('Сохранение по листам...');
+    
     for(let i=0; i<state.sheets.length; i++){
       const dxfText = buildDxfSingleSheet(i);
-      const suggested = `${base}_list${i+1}.dxf`;
+      let perSheetName = '';
+      
+      if (base === defaultBase) {
+        perSheetName = makeDxfExportName(i, rsNum, prNum);
+      } else {
+        const baseWithoutDt = base.replace(/\s*Dt\d+$/i, '');
+        const countOnSheet = state.sheets[i].placed.length;
+        perSheetName = `${baseWithoutDt} Dt${countOnSheet}`;
+      }
+      
+      const suggested = `${perSheetName}.dxf`;
       const res = await saveDxfFile(dxfText, suggested, FS_IDS.save + '-' + i, 'sheets');
+      
       if(res.cancelled){ setStatus('Отменено на листе ' + (i+1)); return; }
       if(!res.ok){ setStatus('Ошибка на листе ' + (i+1)); return; }
+      
       if (res.viaServer) setStatus(`Сохранено ${i+1} / ${state.sheets.length}: ${res.path}`);
       else setStatus(`Сохранено ${i+1} / ${state.sheets.length}: ${res.name}`);
     }

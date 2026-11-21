@@ -13,7 +13,6 @@ export function todayIso(){
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-// Обновленный setStatus, который шлет сигнал в main.js
 export function setStatus(msg) {
   const el = $('status');
   if (el) el.textContent = msg || '';
@@ -22,10 +21,6 @@ export function setStatus(msg) {
   }
 }
 
-// ════════════════════════════════════════════════════════════════
-// Доступность локального сервера (server.js)
-// На хостинге без запущенного server.js часть функций недоступна.
-// ════════════════════════════════════════════════════════════════
 export const SERVER_TIP = 'Работает только при запущенном локальном сервере (server.js)';
 let __serverAvailable = null;
 
@@ -34,7 +29,6 @@ export async function probeServer() {
   try {
     const res = await fetch('/api/ping', { cache: 'no-store' });
     const ct = (res.headers.get('content-type') || '').toLowerCase();
-    // Важно: некоторые хостинги отдают index.html с кодом 200 на любой путь
     if (!res.ok || !ct.includes('application/json')) throw new Error('no-server');
     const data = await res.json();
     __serverAvailable = !!(data && data.ok);
@@ -48,8 +42,6 @@ export function isServerAvailable() {
   return __serverAvailable === true;
 }
 
-// Помечает серверные контролы атрибутом data-server-only: без сервера они
-// блокируются (клик не срабатывает, появляется подсказка на наведении).
 export function applyServerGating(root = document) {
   const ok = isServerAvailable();
   root.querySelectorAll('[data-server-only]').forEach(el => {
@@ -69,7 +61,6 @@ export function applyServerGating(root = document) {
 
   if (!applyServerGating._bound) {
     applyServerGating._bound = true;
-    // Capture-фаза: перехватываем клик по серверному элементу до его обработчиков
     document.addEventListener('click', (e) => {
       if (isServerAvailable()) return;
       const t = e.target;
@@ -82,7 +73,6 @@ export function applyServerGating(root = document) {
   }
 }
 
-// ─── Имена отчётов (запоминание последнего) ────────────────────
 const REPORT_NAMES_KEY = 'raskladka.reportNames.v1';
 
 export function getSavedReportName(key, fallback){
@@ -100,15 +90,14 @@ export function saveReportName(key, name){
   } catch(_){}
 }
 
-// ─── Модальный диалог: имя файла + путь назначения ───────────
-export function askFileNameWithPath({ title, defaultName, destinationHint, storageKey, saveLabel }) {
+export function askFileNameWithPath({ title, defaultName, destinationHint, storageKey, saveLabel, width = 560 }) {
   return new Promise(resolve => {
     const saved = storageKey ? getSavedReportName(storageKey, defaultName) : defaultName;
 
     const modal = document.createElement('div');
     modal.className = 'modal-overlay active';
     modal.innerHTML = `
-      <div class="modal-window" style="width:560px">
+      <div class="modal-window" style="width:${width}px">
         <div class="modal-header" style="background:#eaf4ff;border-bottom-color:#c9e0f5;color:#004a99">
           <span>${title}</span>
           <button class="close-btn" data-role="close" style="color:#004a99">✕</button>
@@ -134,7 +123,6 @@ export function askFileNameWithPath({ title, defaultName, destinationHint, stora
     inp.value = saved;
     setTimeout(() => { inp.focus(); inp.select(); }, 0);
 
-    // live-транслит в процессе ввода + финальный sanitize на blur
     attachLiveTranslit(inp);
     attachTranslitOnBlur(inp);
 
@@ -164,7 +152,6 @@ export function askFileNameWithPath({ title, defaultName, destinationHint, stora
   });
 }
 
-// ─── Чтение сохранённых путей + подсказка «куда сохранится» ──
 export function getSavedPaths(){
   try {
     const raw = localStorage.getItem('raskladka.paths.v1');
@@ -179,7 +166,6 @@ export function makeDestinationHint(category, subfolder){
   return subfolder ? `${base.replace(/[\\/]$/, '')}\\${subfolder}` : base;
 }
 
-// ─── Скачивание файла браузером ─────────────────────────────
 export function downloadBlob(blob, fileName, revokeDelayMs = 2000) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -191,9 +177,7 @@ export function downloadBlob(blob, fileName, revokeDelayMs = 2000) {
   setTimeout(() => URL.revokeObjectURL(url), revokeDelayMs);
 }
 
-// ─── Сохранение файла через локальный сервер ────────────────
 export async function saveFileToServer(category, subfolder, fileName, content, isBase64) {
-  // Без сервера не стучимся в сеть — вызывающий код уйдёт в браузерный fallback
   if (!isServerAvailable()) return { ok: false, error: 'no-server' };
   try {
     const res = await fetch('/api/save-file', {
@@ -217,10 +201,6 @@ export async function saveFileToServer(category, subfolder, fileName, content, i
     return { ok: false, error: e.message };
   }
 }
-
-// ════════════════════════════════════════════════════════════════
-// Транслитерация и нормализация имён файлов
-// ════════════════════════════════════════════════════════════════
 
 const TRANSLIT_TABLE = {
   'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'y',
@@ -252,17 +232,13 @@ export function sanitizeFileName(str, maxLen = 120, doTransliterate = true) {
   return s;
 }
 
-/**
- * Live-транслит для input: при каждом нажатии заменяет кириллицу на латиницу
- * с сохранением позиции курсора.
- */
 export function attachLiveTranslit(input) {
   if (!input || input._translitLiveBound) return;
   input._translitLiveBound = true;
 
   input.addEventListener('input', () => {
     const raw = String(input.value || '');
-    if (!/[а-яёА-ЯЁ]/.test(raw)) return; // нет кириллицы — ничего не делаем
+    if (!/[а-яёА-ЯЁ]/.test(raw)) return;
 
     const safe = transliterate(raw);
     const pos = input.selectionStart ?? safe.length;
@@ -273,17 +249,10 @@ export function attachLiveTranslit(input) {
   });
 }
 
-/**
- * Привязывает к input финальный sanitize при уходе с поля (blur).
- * Убирает недопустимые символы, схлопывает пробелы, обрезает длину.
- */
 export function attachTranslitOnBlur(input) {
   if (!input || input._translitBlurBound) return;
   input._translitBlurBound = true;
   input.addEventListener('blur', () => {
-    const v = String(input.value || '').trim();
-    if (!v) return;
-    const safe = sanitizeFileName(v, 100);
-    if (safe !== v) input.value = safe;
+    // Отключено, чтобы не удалять пробелы
   });
 }

@@ -164,7 +164,12 @@ export function openSaveProjectDialog(btnSave) {
           <input id="spName" type="text" style="width:100%;padding:8px 10px;border:1px solid #bbb;border-radius:4px;font-size:16px;font-family:monospace" autocomplete="off" spellcheck="false">
         </div>
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
-          ${currentProject ? `<button id="spCurrent" class="small" style="padding:4px 10px; font-size:12px;">↩ Текущий проект: ${currentProject.replace(/\.dxfnest\.json$/i, '')}</button>` : ''}
+          ${currentProject ? (() => {
+            let currClean = currentProject.replace(/\.dxfnest\.json$/i, '');
+            const cm = currClean.match(/^(PR\d+)(D\d+)(Sm\d+)(L\d+)?(T[\d.]+)?(Dt\d+)?$/i);
+            if (cm) currClean = [cm[1], cm[2], cm[3], cm[4], cm[5], cm[6]].filter(Boolean).join(' ');
+            return `<button id="spCurrent" class="small" style="padding:4px 10px; font-size:12px;">↩ Текущий: ${currClean}</button>`;
+          })() : ''}
           <button id="spNext" class="small" style="padding:4px 10px; font-size:12px;">🔄 Следующий номер +1</button>
         </div>
       </div>
@@ -178,8 +183,17 @@ export function openSaveProjectDialog(btnSave) {
     const inpName = modal.querySelector('#spName');
     const inpNum = modal.querySelector('#spNum');
     
-    // Устанавливаем имя без расширения
-    inpName.value = defaultNameClean;
+    // Функция для добавления пробелов для удобства чтения (PR01 D11112026 Sm1...)
+    const applyDisplayFormat = (str) => {
+        const m = str.match(/^(PR\d+)(D\d+)(Sm\d+)(L\d+)?(T[\d.]+)?(Dt\d+)?$/i);
+        if (m) {
+            return [m[1], m[2], m[3], m[4], m[5], m[6]].filter(Boolean).join(' ');
+        }
+        return str;
+    };
+
+    // Устанавливаем имя с пробелами
+    inpName.value = applyDisplayFormat(defaultNameClean);
     setTimeout(() => { inpName.focus(); inpName.select(); }, 0);
 
     inpNum.addEventListener('input', () => {
@@ -188,9 +202,9 @@ export function openSaveProjectDialog(btnSave) {
         inpNum.value = String(n).padStart(2, '0');
         if (typeof buildProjectName === 'function') {
             let newName = buildProjectName(n);
-            // Убираем расширение перед установкой в поле
             newName = newName.replace(/\.dxfnest\.json$/i, '').replace(/\.json$/i, '');
-            inpName.value = newName;
+            // Добавляем пробелы для отображения
+            inpName.value = applyDisplayFormat(newName);
         }
     });
 
@@ -202,6 +216,9 @@ export function openSaveProjectDialog(btnSave) {
     modal.querySelector('#spSave').onclick = () => {
         let raw = inpName.value.trim();
         if (!raw) { inpName.focus(); return; }
+        
+        // ═══ УБИРАЕМ ПРОБЕЛЫ ПЕРЕД СОХРАНЕНИЕМ ═══
+        raw = raw.replace(/\s+/g, '');
         
         // При сохранении возвращаем расширение обратно, если его нет
         if (!raw.toLowerCase().endsWith('.json')) {

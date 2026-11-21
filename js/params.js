@@ -2,7 +2,8 @@
 import { state, DEFAULT_PARAMS, profilesStore, PROFILES_KEY, ACTIVE_KEY, genId } from './state.js';
 import { $, setStatus, sanitizeFileName } from './utils.js';
 import { parseDxfText } from './dxf-import.js';
-import { schedulePush } from './history.js'; // <--- ДОБАВЛЕНО
+import { schedulePush } from './history.js';
+import { getCurrentProjectName } from './project-io.js';
 
 // ─── DXF заготовки ───
 let _stockDxfBound = false;
@@ -38,7 +39,7 @@ export function bindStockDxfUI() {
         updateStockMiniInfo();
         setStatus(`Контур заготовки загружен: ${Math.round(parsed.width)}×${Math.round(parsed.height)} мм`);
         import('./canvas.js').then(m => m.draw()).catch(() => {});
-        schedulePush(500); // <--- Сохраняем в историю
+        schedulePush(500);
       } catch (err) {
         setStatus('Ошибка загрузки контура: ' + err.message);
         alert('Ошибка загрузки DXF: ' + err.message);
@@ -55,7 +56,7 @@ export function bindStockDxfUI() {
       updateStockMiniInfo();
       setStatus('Контур заготовки сброшен');
       import('./canvas.js').then(m => m.draw()).catch(() => {});
-      schedulePush(500); // <--- Сохраняем в историю
+      schedulePush(500);
     });
   }
 }
@@ -239,7 +240,7 @@ export function bindProfileUI() {
       applyParams(p.params);
       saveProfiles();
       updateStockMiniInfo();
-      schedulePush(100); // <--- Сохраняем в историю
+      schedulePush(100);
     }
   });
 
@@ -302,25 +303,25 @@ export function bindProfileUI() {
       updateSumGap();
       updateStockMiniInfo();
       updateActiveProfileFromFields();
-      schedulePush(600); // <--- ДОБАВЛЕНО: Сохраняем историю при вводе
+      schedulePush(600);
     });
     $(id)?.addEventListener('change', () => {
       updateSumGap();
       updateStockMiniInfo();
       updateActiveProfileFromFields();
-      schedulePush(100); // <--- ДОБАВЛЕНО: Сохраняем историю при потере фокуса
+      schedulePush(100);
     });
   }
   
   $('inRemnantOn')?.addEventListener('change', () => {
     updateActiveProfileFromFields();
-    schedulePush(100); // <--- ДОБАВЛЕНО
+    schedulePush(100);
   });
   
   $('inGridShow')?.addEventListener('change', () => {
     updateActiveProfileFromFields();
     import('./canvas.js').then(m => m.draw()).catch(() => {});
-    schedulePush(100); // <--- ДОБАВЛЕНО
+    schedulePush(100);
   });
 }
 
@@ -422,4 +423,27 @@ export function makeBaseName() {
 
 export function makeSafeBaseName() {
   return sanitizeFileName(makeBaseName(), 100, true);
+}
+
+/**
+ * Формирует имя для экспорта DXF.
+ * Пример: Rs01 PR02 L1500x1250x3 Dt8
+ */
+export function makeDxfExportName(sheetIndex = null, rsNum = '01', prNum = '01') {
+  const p = readParams();
+  
+  const sheetDim = `L${Math.round(p.sheetW)}x${Math.round(p.sheetH)}x${p.thickness}`;
+
+  let dtCount = 0;
+  if (state && state.sheets) {
+    if (sheetIndex !== null && state.sheets[sheetIndex]) {
+      dtCount = state.sheets[sheetIndex].placed.length;
+    } else {
+      dtCount = state.sheets.reduce((sum, sh) => sum + sh.placed.length, 0);
+    }
+  }
+  
+  const dtStr = `Dt${dtCount}`;
+
+  return `Rs${rsNum} PR${prNum} ${sheetDim} ${dtStr}`;
 }
