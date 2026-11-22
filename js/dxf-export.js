@@ -177,8 +177,16 @@ export function bindDxfExportUI(){
     
     let rsNum = '01';
     if (state.jobs && state.jobs.length) {
-      const idx = state.jobs.findIndex(j => j.id === state.activeJobId);
-      if (idx >= 0) rsNum = String(idx + 1).padStart(2, '0');
+      const activeJob = state.jobs.find(j => j.id === state.activeJobId);
+      if (activeJob && activeJob.name) {
+        const match = activeJob.name.match(/\d+/);
+        if (match) {
+          rsNum = match[0];
+        } else {
+          const idx = state.jobs.findIndex(j => j.id === state.activeJobId);
+          if (idx >= 0) rsNum = String(idx + 1).padStart(2, '0');
+        }
+      }
     }
     let prNum = '01';
     try {
@@ -189,7 +197,7 @@ export function bindDxfExportUI(){
       }
     } catch (_) {}
 
-    const defaultName = makeDxfExportName(null, rsNum, prNum);
+    const defaultName = makeDxfExportName(0, rsNum, prNum);
     
     const name = await askFileNameWithPath({
       title: '💾 Сохранить все листы в DXF',
@@ -217,8 +225,16 @@ export function bindDxfExportUI(){
     
     let rsNum = '01';
     if (state.jobs && state.jobs.length) {
-      const idx = state.jobs.findIndex(j => j.id === state.activeJobId);
-      if (idx >= 0) rsNum = String(idx + 1).padStart(2, '0');
+      const activeJob = state.jobs.find(j => j.id === state.activeJobId);
+      if (activeJob && activeJob.name) {
+        const match = activeJob.name.match(/\d+/);
+        if (match) {
+          rsNum = match[0];
+        } else {
+          const idx = state.jobs.findIndex(j => j.id === state.activeJobId);
+          if (idx >= 0) rsNum = String(idx + 1).padStart(2, '0');
+        }
+      }
     }
     let prNum = '01';
     try {
@@ -229,15 +245,13 @@ export function bindDxfExportUI(){
       }
     } catch (_) {}
 
-    const defaultBase = makeDxfExportName(null, rsNum, prNum);
+        // Берем имя для ПЕРВОГО листа (индекс 0), чтобы в окне было правильное Dt
+    const defaultBase = makeDxfExportName(0, rsNum, prNum);
     
     const base = await askFileNameWithPath({
       title: '💾 Сохранить листы в DXF (каждый отдельно)',
       defaultName: defaultBase,
-      destinationHint: makeDestinationHint('sheets', ''),
-      storageKey: 'dxfSplit',
-      saveLabel: '💾 Сохранить по листам',
-      width: 560,
+      // ...
     });
     if (!base) return;
     

@@ -12,6 +12,23 @@ import { saveReportToFolder } from './pdf-maker.js';
 import { openQrScanner } from './qr-scanner.js';
 import { openImportListModal } from './import-list.js';
 
+/**
+ * Расставляет пробелы в имени проекта для удобного отображения
+ */
+function formatProjectNameReadable(name) {
+  if (!name) return '';
+  let clean = String(name).replace(/\.dxfnest\.json$/i, '').replace(/\.json$/i, '');
+  
+  // Если пробелов нет, пытаемся разбить по маске
+  if (!clean.includes(' ')) {
+    const m = clean.match(/^(PR\d+)(D\d+)(Sm\d+)(L\d+)?(T[\d.]+)?(Dt\d+)?$/i);
+    if (m) {
+      return [m[1], m[2], m[3], m[4], m[5], m[6]].filter(Boolean).join(' ');
+    }
+  }
+  return clean;
+}
+
 function makeDefaultReportName(prefix) {
     const d = new Date();
     const p = n => String(n).padStart(2, '0');
@@ -150,8 +167,8 @@ function setupExport() {
     createDropdownMenu({
         id: 'exportDropdown', triggerBtn: newBtn,
         items: [
-            { action: 'export-all', icon: '🗂', title: 'Все листы', desc: 'Все листы в один DXF (в папку Листы)' },
-            { action: 'export-split', icon: '📄', title: 'По листам', desc: 'Каждый лист — отдельный DXF' },
+            { action: 'export-split', icon: '📄', title: 'По листам', desc: 'Каждый лист — отдельный DXF (для станка)' },
+            { action: 'export-all', icon: '🗂', title: 'Все листы', desc: 'Все листы в один DXF (для просмотра)' },
         ],
         onAction: (action) => {
             if (action === 'export-all') oldBtnAll.click();
@@ -219,13 +236,19 @@ async function setupProject() {
     newBtn.title = 'Управление проектом';
     btnSave.parentNode.insertBefore(newBtn, btnSave);
 
-    let recentItems = [];
+        let recentItems = [];
     try {
         const res = await fetch('/api/list-projects');
         const data = await res.json();
         if (data.ok && data.files) {
             for (const f of data.files.slice(0, 5)) {
-                recentItems.push({ action: `load-${f.name}`, icon: '🕒', title: f.name, desc: 'Недавний проект' });
+                const prettyName = formatProjectNameReadable(f.name);
+                recentItems.push({ 
+                  action: `load-${f.name}`, 
+                  icon: '🕒', 
+                  title: prettyName
+                  // desc убран, чтобы не засорять меню
+                });
             }
         }
     } catch (e) {
@@ -236,7 +259,14 @@ async function setupProject() {
         { action: 'load', icon: '📂', title: 'Открыть проект', desc: 'Выбрать файл в проводнике' },
         { action: 'save', icon: '💾', title: 'Сохранить проект…', desc: 'Сохранить в папку Проектов', hotkey: 'Ctrl+S' },
     ];
-    if (recentItems.length) { items.push({ type: 'sep' }); items.push(...recentItems); }
+    
+    if (recentItems.length) { 
+        items.push({ type: 'sep' }); 
+        // ═══ ДОБАВЛЯЕМ ЗАГОЛОВОК ДЛЯ БЛОКА НЕДАВНИХ ═══
+        items.push({ action: 'noop', icon: '📌', title: 'Недавние проекты', desc: '', disabled: true });
+        items.push(...recentItems); 
+    }
+    
     items.push({ type: 'sep' });
     items.push({ action: 'qr-project', icon: '📱', title: 'QR-код проекта…', desc: 'Сгенерировать QR для быстрого доступа' });
 

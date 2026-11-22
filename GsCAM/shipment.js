@@ -9,7 +9,7 @@ import { getPost, DEFAULT_POST_ID } from './posts/index.js';
 import { buildLayoutHtml, buildReportHtml } from '../js/report/report.js';
 import { buildLabelsHtml } from '../js/report/labels.js';
 import { buildSpecificationHtml } from '../js/report/spec.js';
-import { buildDxfAllSheets } from '../js/dxf-export.js';
+import { buildDxfSingleSheet } from '../js/dxf-export.js';
 import { getCurrentProjectName, buildDefaultFileName } from '../js/project-io.js';
 import { getPlayerHtmlForSheet } from './export-player.js';
 import { generatePdfBlob } from '../js/dialogs/pdf-maker.js';
@@ -39,14 +39,48 @@ function getShopPath() {
 }
 
 function getProjectBase() {
-  let name = '';
+  // 1. Номер задания (Rs) — берём цифры из названия активного задания
+  let rsNum = '01';
+  if (state.jobs && state.jobs.length) {
+    const activeJob = state.jobs.find(j => j.id === state.activeJobId);
+    if (activeJob && activeJob.name) {
+      const match = activeJob.name.match(/\d+/);
+      if (match) rsNum = match[0];
+    }
+  }
+
+  // 2. Номер проекта (PR) — берём из имени текущего файла проекта
+  let prNum = '01';
   try {
-    name = getCurrentProjectName() || '';
-    if (!name) name = buildDefaultFileName();
+    const projName = getCurrentProjectName() || '';
+    if (projName) {
+      const m = projName.match(/^PR(\d+)/i);
+      if (m) prNum = String(m[1]).padStart(2, '0');
+    }
   } catch (_) {}
-  return String(name || 'Raskladka')
-    .replace(/\.dxfnest\.json$/i, '')
-    .replace(/\.json$/i, '');
+
+  // 3. Габариты и толщина (L)
+  const params = readParams();
+  const sheetDim = `L${Math.round(params.sheetW)}x${Math.round(params.sheetH)}x${params.thickness}`;
+
+  // 4. Количество деталей (Dt) — всего на всех листах
+  const totalParts = (state.sheets || []).reduce((s, sh) => s + (sh.placed || []).length, 0);
+  const dtStr = `Dt${totalParts}`;
+
+  // Итоговое имя
+  return `Rs${rsNum} PR${prNum} ${sheetDim} ${dtStr}`;
+}
+
+function formatShipmentName(name) {
+  if (!name) return '';
+  const clean = String(name).replace(/\.dxfnest\.json$/i, '').replace(/\.json$/i, '');
+  if (!clean.includes(' ')) {
+    const m = clean.match(/^(PR\d+)(D\d+)(Sm\d+)(L\d+)?(T[\d.]+)?(Dt\d+)?$/i);
+    if (m) {
+      return [m[1], m[2], m[3], m[4], m[5], m[6]].filter(Boolean).join(' ');
+    }
+  }
+  return clean;
 }
 
 function getGcodeFileName(si, projectBase, thickness, ext) {
@@ -131,8 +165,8 @@ export function openShipmentModal() {
           <label style="font-weight:600;font-size:13px;color:#004a99;display:block;margin-bottom:4px">
             Имя файлов (префикс)
           </label>
-          <input type="text" data-role="base-name" value="${projectBase}"
-                 style="width:100%;padding:8px 10px;border:1px solid #bbb;border-radius:4px;font-size:14px;font-family:monospace;box-sizing:border-box; font-weight: bold;">
+          <input type="text" data-role="base-name" value="${formatShipmentName(projectBase)}"
+                 style="width:100%;padding:8px 10px;border:1px solid #bbb;border-radius:4px;font-size:18px;font-family:monospace;box-sizing:border-box; font-weight: bold; color:#004a99; background:#fff;">
         </div>
 
         <div style="display:flex; gap:16px; margin-bottom:12px;">
@@ -164,7 +198,7 @@ export function openShipmentModal() {
                 </label>
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
                   <input type="checkbox" id="chk-dxf" data-role="include-dxf">
-                  <span><b>DXF</b> — все листы одним файлом</span>
+                  <span><b>DXF</b> — по листам (каждый отдельно)</span>
                 </label>
               </div>
             </div>
@@ -254,6 +288,7 @@ export function openShipmentModal() {
   const profileSelect = q('#shipment-profile-select');
   const btnSaveProfile = q('#shipment-profile-save');
   const btnDeleteProfile = q('#shipment-profile-delete');
+  const baseNameInput = q('[data-role="base-name"]');
 
   function updateProfileList() {
     const profiles = getShipmentProfiles();
@@ -283,6 +318,7 @@ export function openShipmentModal() {
     saveLastSelectedProfile(name);
     if (!name) return;
     loadProfile(name, CHECKBOX_IDS);
+    if (baseNameInput) baseNameInput.value = formatShipmentName(getProjectBase());
   };
 
   btnSaveProfile.onclick = () => {
@@ -321,7 +357,6 @@ export function openShipmentModal() {
   doBtn.onclick = async () => {
     const currentProfile = profileSelect.value;
     
-    // Проверяем, изменились ли галочки по сравнению с сохранёнными в профиле
     if (currentProfile) {
       const profiles = getShipmentProfiles();
       const savedSettings = profiles[currentProfile];
@@ -347,14 +382,13 @@ export function openShipmentModal() {
         }
       }
     } else {
-      // Если профиль не выбран, просто сохраняем последнее состояние
       saveLastState(CHECKBOX_IDS);
     }
 
-    const base = sanitizeFileName(
-      String(q('[data-role="base-name"]').value || '').trim() || 'Raskladka',
-      100
-    );
+    let rawBase = String(baseNameInput.value || '').trim() || 'Raskladka';
+    rawBase = rawBase.replace(/\s+/g, '');
+    const base = sanitizeFileName(rawBase, 100);
+    
     const want = {
       gcode:      q('[data-role="include-gcode"]').checked,
       dxf:        q('[data-role="include-dxf"]').checked,
@@ -456,12 +490,36 @@ async function buildShipmentFiles(base, fullProjectName, want, onProgress) {
   }
 
   if (want.dxf) {
-    progress(0.05, 'DXF всех листов...');
+    const { getCurrentProjectName } = await import('../js/project-io.js');
+    let prNum = '01';
     try {
-      const dxf = buildDxfAllSheets();
-      files.push({ name: `${projectBase}.dxf`, content: dxf, mime: 'application/dxf' });
-    } catch (e) {
-      console.warn('[shipment] DXF:', e);
+      const projName = getCurrentProjectName();
+      if (projName) {
+        const m = projName.match(/^PR(\d+)/i);
+        if (m) prNum = String(m[1]).padStart(2, '0');
+      }
+    } catch (_) {}
+
+    let rsNum = '01';
+    if (state.jobs && state.jobs.length) {
+      const activeJob = state.jobs.find(j => j.id === state.activeJobId);
+      if (activeJob && activeJob.name) {
+        const match = activeJob.name.match(/\d+/);
+        if (match) rsNum = match[0];
+      }
+    }
+
+    for (let si = 0; si < total; si++) {
+      progress(0.05 + (si / Math.max(total, 1)) * 0.02, `DXF: лист ${si + 1} из ${total}...`);
+      try {
+        const dxfText = buildDxfSingleSheet(si);
+        const countOnSheet = state.sheets[si].placed.length;
+        const sheetDim = `L${Math.round(params.sheetW)}x${Math.round(params.sheetH)}x${params.thickness}`;
+        const fileName = `Rs${rsNum} PR${prNum} ${sheetDim} Dt${countOnSheet}.dxf`;
+        files.push({ name: fileName, content: dxfText, mime: 'application/dxf' });
+      } catch (e) {
+        console.warn('[shipment] DXF лист ' + (si + 1) + ':', e);
+      }
     }
   }
 

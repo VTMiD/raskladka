@@ -109,7 +109,7 @@ export function askFileNameWithPath({ title, defaultName, destinationHint, stora
           <label style="font-weight:600;font-size:13px;color:#333;display:block;margin-bottom:4px">Имя файла (без расширения .dxf)</label>
           <input data-role="input" type="text"
                  style="width:100%;padding:8px 10px;border:1px solid #bbb;border-radius:4px;
-                        font-size:13px;font-family:monospace;box-sizing:border-box"
+                        font-size:18px;font-weight:bold;color:#004a99;font-family:monospace;box-sizing:border-box"
                  autocomplete="off" spellcheck="false">
         </div>
         <div class="modal-footer">
