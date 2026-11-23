@@ -84,18 +84,37 @@ function formatShipmentName(name) {
 }
 
 function getGcodeFileName(si, projectBase, thickness, ext) {
-  const m = String(projectBase || '').match(/^PR(\d+)/i);
-  const projectNum = m ? String(m[1]).padStart(2, '0') : '01';
-
-  let name = `PR${projectNum}L${si + 1}`;
-  if (thickness && isFinite(thickness)) {
-    name += `T${Math.round(thickness * 10) / 10}`;
+  // 1. Номер задания (Rs) — берём цифры из названия активного задания
+  let rsNum = '01';
+  if (state.jobs && state.jobs.length) {
+    const activeJob = state.jobs.find(j => j.id === state.activeJobId);
+    if (activeJob && activeJob.name) {
+      const match = activeJob.name.match(/\d+/);
+      if (match) rsNum = match[0];
+    }
   }
-  const total = (state.sheets || []).reduce((s, sh) => s + (sh.placed || []).length, 0);
-  if (total) name += `Dt${total}`;
 
+  // 2. Номер проекта (PR) — берём из имени текущего файла проекта (projectBase)
+  let prNum = '01';
+  const m = String(projectBase || '').match(/^PR(\d+)/i);
+  if (m) prNum = String(m[1]).padStart(2, '0');
+
+  // 3. Габариты и толщина (L)
+  const params = readParams();
+  const sheetDim = `L${Math.round(params.sheetW)}x${Math.round(params.sheetH)}x${params.thickness}`;
+
+  // 4. Количество деталей (Dt) — на конкретном листе (индекс si)
+  let dtCount = 0;
+  if (state.sheets && state.sheets[si]) {
+    dtCount = state.sheets[si].placed.length;
+  }
+  const dtStr = `Dt${dtCount}`;
+
+  // 5. Расширение
   const cleanExt = String(ext || '.tap').replace(/^\./, '');
-  return `${name}.${cleanExt}`;
+
+  // Итоговое имя: Rs01 PR01 L1500x1250x3 Dt13.tap
+  return `Rs${rsNum} PR${prNum} ${sheetDim} ${dtStr}.${cleanExt}`;
 }
 
 async function blobToBase64(blob) {

@@ -337,3 +337,158 @@ export function openQrProjectDialog() {
         generateProjectQr(raw);
     };
 }
+
+/**
+ * Красивое окно выбора проекта из папки с поиском по имени и деталям.
+ */
+export async function openProjectPicker() {
+  if (!isServerAvailable()) {
+    alert('Для просмотра списка проектов нужен запущенный локальный сервер.');
+    return;
+  }
+
+  // Показываем индикатор загрузки
+  const loadingModal = document.createElement('div');
+  loadingModal.className = 'modal-overlay active';
+  loadingModal.innerHTML = `
+    <div class="modal-window" style="width:500px; text-align:center; padding: 20px;">
+      <div class="spinner" style="margin: 0 auto 10px;"></div>
+      <div>Загрузка списка проектов...</div>
+    </div>`;
+  document.body.appendChild(loadingModal);
+
+  try {
+    const res = await fetch('/api/list-projects');
+    const data = await res.json();
+    
+    loadingModal.remove();
+
+    if (!data.ok || !data.files || !data.files.length) {
+      alert('В папке «Проекты» пока нет сохранённых файлов.');
+      return;
+    }
+
+    const files = data.files;
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay active';
+    
+    // Генерируем HTML для списка
+    const listHtml = files.map((f, idx) => {
+      // Форматируем имя для отображения (с пробелами)
+      let cleanName = f.name.replace(/\.dxfnest\.json$/i, '').replace(/\.json$/i, '');
+      if (!cleanName.includes(' ')) {
+        const m = cleanName.match(/^(PR\d+)(D\d+)(Sm\d+)(L\d+)?(T[\d.]+)?(Dt\d+)?$/i);
+        if (m) cleanName = [m[1], m[2], m[3], m[4], m[5], m[6]].filter(Boolean).join(' ');
+      }
+      
+      // Форматируем дату
+      const d = new Date(f.mtime);
+      const dateStr = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+      return `
+        <div class="project-item" data-name="${f.name}" data-date="${dateStr}" data-parts="" style="display:flex; justify-content:space-between; align-items:center; padding:10px 15px; border-bottom:1px solid #eee; cursor:pointer; transition: background 0.15s;">
+          <div>
+            <div class="project-title" style="font-weight:bold; color:#004a99; font-family:monospace; font-size:14px;">${cleanName}</div>
+            <div class="project-details" style="font-size:11px; color:#888;">${dateStr}</div>
+          </div>
+          <button class="small primary" style="background:#eaf4ff; color:#004a99; border-color:#4a90d9; pointer-events:none;">Открыть</button>
+        </div>
+      `;
+    }).join('');
+
+    modal.innerHTML = `
+      <div class="modal-window" style="width:650px; max-width:95vw;">
+        <div class="modal-header" style="background:#eaf4ff;border-bottom-color:#c9e0f5;color:#004a99">
+          <span>📂 Выберите проект для открытия</span>
+          <button class="close-btn" id="ppClose" style="color:#004a99">✕</button>
+        </div>
+        <div class="modal-body" style="padding: 0;">
+          <div style="padding: 10px 15px; background: #f9f9f9; border-bottom: 1px solid #ddd; display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="ppSearchName" placeholder="🔍 Поиск по имени или дате..." style="flex:1; padding:8px 10px; border:1px solid #bbb; border-radius:4px; font-size:14px; box-sizing:border-box;">
+              <input type="text" id="ppSearchPart" placeholder="🔍 Поиск по детали (номер)..." style="flex:1; padding:8px 10px; border:1px solid #bbb; border-radius:4px; font-size:14px; box-sizing:border-box;">
+            </div>
+            <div style="font-size:11px; color:#888; text-align:right;">Шаблонный поиск: «24» найдёт 240, 241, 243...</div>
+          </div>
+          <div id="ppList" style="max-height: 400px; overflow-y: auto;">
+            ${listHtml}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="ppCancel">Отмена</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const close = () => modal.remove();
+    modal.querySelector('#ppClose').onclick = close;
+    modal.querySelector('#ppCancel').onclick = close;
+    modal.addEventListener('click', e => { if (e.target === modal) close(); });
+
+    // ═══ АСИНХРОННАЯ ЗАГРУЗКА ДЕТАЛЕЙ ДЛЯ ПОИСКА ═══
+    // Запускаем в фоне, чтобы не блокировать интерфейс
+    (async () => {
+      for (const item of modal.querySelectorAll('.project-item')) {
+        const fileName = item.dataset.name;
+        try {
+          const res = await fetch('/api/find-project?name=' + encodeURIComponent(fileName));
+          if (res.ok) {
+            const data = await res.json();
+            const envelope = JSON.parse(data.content);
+            const jobs = envelope.state?.jobs || [];
+            const parts = jobs[0]?.parts || [];
+            // Сохраняем список деталей в data-атрибут для быстрого поиска
+            const partNames = parts.map(p => p.name.toLowerCase()).join(' ');
+            item.dataset.parts = partNames;
+          }
+        } catch (_) {}
+      }
+    })();
+
+    // Обработка клика по проекту
+    modal.querySelectorAll('.project-item').forEach(item => {
+      item.onmouseover = () => item.style.background = '#eaf4ff';
+      item.onmouseout = () => item.style.background = '#fff';
+      
+      item.onclick = async () => {
+        const fileName = item.dataset.name;
+        close();
+        setStatus(`Загрузка проекта: ${fileName}...`);
+        const dummyEl = document.createElement('div');
+        dummyEl.style.display = 'none';
+        document.body.appendChild(dummyEl);
+        await loadProjectFromServer(fileName, dummyEl);
+        dummyEl.remove();
+      };
+    });
+
+    // ═══ ЛОГИКА ФИЛЬТРАЦИИ ═══
+    const searchNameInput = modal.querySelector('#ppSearchName');
+    const searchPartInput = modal.querySelector('#ppSearchPart');
+
+    const applyFilters = () => {
+      const qName = searchNameInput.value.toLowerCase().trim();
+      const qPart = searchPartInput.value.toLowerCase().trim();
+      
+      modal.querySelectorAll('.project-item').forEach(item => {
+        const title = item.querySelector('.project-title').textContent.toLowerCase();
+        const date = item.dataset.date.toLowerCase();
+        const parts = (item.dataset.parts || '').toLowerCase();
+
+        const matchName = !qName || title.includes(qName) || date.includes(qName);
+        const matchPart = !qPart || parts.includes(qPart);
+
+        item.style.display = (matchName && matchPart) ? 'flex' : 'none';
+      });
+    };
+
+    searchNameInput.oninput = applyFilters;
+    searchPartInput.oninput = applyFilters;
+
+  } catch (err) {
+    if (loadingModal.parentNode) loadingModal.remove();
+    alert('Ошибка загрузки списка проектов: ' + err.message);
+  }
+}

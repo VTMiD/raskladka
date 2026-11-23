@@ -68,26 +68,17 @@ function setupReports() {
         id: 'reportsDropdown',
         triggerBtn: btn,
         items: [
-            // 1. Сначала КАРТА
             { action: 'save-map-pdf',    icon: '📄', title: 'Сохранить карту PDF', desc: '→ Проекты\\Отчеты' },
-            // 2. Потом ОТЧЁТ
             { action: 'save-report-pdf', icon: '📄', title: 'Сохранить отчёт PDF', desc: '→ Проекты\\Отчеты' },
-            // 3. Спецификация
             { action: 'save-spec-pdf',   icon: '📊', title: 'Сохранить спецификацию PDF', desc: '→ Проекты\\Отчеты' },
             { type: 'sep' },
-            // ПЕЧАТЬ
             { action: 'print-layout', icon: '🖨', title: 'Печать карты', desc: 'Диалог печати' },
             { action: 'print-report', icon: '🖨', title: 'Печать отчёта', desc: 'Диалог печати' },
             { action: 'print-spec',   icon: '🖨', title: 'Печать спецификации', desc: 'Диалог печати' },
-            
             { type: 'sep' },
-            
-            // JPG
             { action: 'save-map-jpg',    icon: '🖼', title: 'Сохранить карту JPG', desc: '→ Изображения листов по одному' },
             { action: 'save-report-jpg', icon: '🖼', title: 'Сохранить отчёт JPG', desc: '→ Картинка в загрузки' },
-            
             { type: 'sep' },
-            
             { action: 'save-player-html', icon: '🎬', title: 'Сохранить HTML-плеер', desc: 'Автономная симуляция резки' },
             { action: 'export-csv', icon: '📊', title: 'Экспорт в CSV', desc: 'Спецификация для Excel' },
         ],
@@ -236,7 +227,7 @@ async function setupProject() {
     newBtn.title = 'Управление проектом';
     btnSave.parentNode.insertBefore(newBtn, btnSave);
 
-        let recentItems = [];
+    let recentItems = [];
     try {
         const res = await fetch('/api/list-projects');
         const data = await res.json();
@@ -246,8 +237,8 @@ async function setupProject() {
                 recentItems.push({ 
                   action: `load-${f.name}`, 
                   icon: '🕒', 
-                  title: prettyName
-                  // desc убран, чтобы не засорять меню
+                  title: prettyName,
+                  desc: '' // Пустая строка, чтобы избежать "undefined"
                 });
             }
         }
@@ -262,7 +253,7 @@ async function setupProject() {
     
     if (recentItems.length) { 
         items.push({ type: 'sep' }); 
-        // ═══ ДОБАВЛЯЕМ ЗАГОЛОВОК ДЛЯ БЛОКА НЕДАВНИХ ═══
+        // Заголовок для блока недавних
         items.push({ action: 'noop', icon: '📌', title: 'Недавние проекты', desc: '', disabled: true });
         items.push(...recentItems); 
     }
@@ -274,7 +265,12 @@ async function setupProject() {
         id: 'projectDropdown', triggerBtn: newBtn, items: items,
         onAction: (action) => {
             if (action === 'save') openSaveProjectDialog(btnSave);
-            else if (action === 'load') btnLoad.click();
+            else if (action === 'load') {
+                import('./project-manager.js').then(m => {
+                    if (m.openProjectPicker) m.openProjectPicker();
+                    else btnLoad.click(); // fallback
+                });
+            }
             else if (action === 'qr-project') openQrProjectDialog();
             else if (action.startsWith('load-')) {
                 const fname = action.replace('load-', '');
