@@ -613,6 +613,33 @@ export function getPlayerTemplate(dataJson) {
         ctx.stroke();
       }
 
+      // ═══ БЕЙДЖ ДЛЯ ЕДИНОГО РЕЗА ═══
+      if (curKind === 'rapid' && st.progress > 0) {
+        let prevKind = '—';
+        let prevLen = 0;
+        for (const s of segs) {
+          if (prevLen + s.len >= st.progress - 1) {
+            prevKind = s.type === 'rapid' ? 'rapid' : s.leadIn ? 'lead-in' : s.torch ? 'cut' : 'idle';
+            break;
+          }
+          prevLen += s.len;
+        }
+        if (prevKind === 'cut') {
+          ctx.fillStyle = '#00ccff';
+          ctx.font = 'bold 16px sans-serif';
+          ctx.textAlign = 'left';
+          ctx.shadowColor = '#00ccff';
+          ctx.shadowBlur = 12;
+          ctx.fillText('✂ ЕДИНЫЙ РЕЗ (холостой ход)', px + 20, py - 20);
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = '#00ccff';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(px, py, 14, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
       hudX.textContent = pos[0].toFixed(1);
       hudY.textContent = pos[1].toFixed(1);
     } else {
@@ -624,13 +651,24 @@ export function getPlayerTemplate(dataJson) {
       hudSpeed.textContent = 'F' + Math.round(st.lastSlowFeed);
       hudSpeed.className = 'sim-hud-speed slow';
       hudState.textContent = '⚡ Медленный врез';
+    } else if (curKind === 'rapid') {
+      hudSpeed.classList.add('rapid');
+      let prevKind = '—';
+      let prevLen = 0;
+      for (const s of segs) {
+        if (prevLen + s.len >= st.progress - 1) {
+          prevKind = s.type === 'rapid' ? 'rapid' : s.leadIn ? 'lead-in' : s.torch ? 'cut' : 'idle';
+          break;
+        }
+        prevLen += s.len;
+      }
+      hudState.textContent = (prevKind === 'cut') ? '✂ Единый рез' : '⏩ Холостой ход';
+    } else if (curKind === 'lead-in') {
+      hudState.textContent = '🎯 Врезание';
+    } else if (curKind === 'cut') {
+      hudState.textContent = '🔥 Резка (F' + Math.round(currentFeed) + ')';
     } else {
-      hudSpeed.textContent = 'F' + Math.round(currentFeed);
-      hudSpeed.className = 'sim-hud-speed';
-      if (curKind === 'rapid') { hudSpeed.classList.add('rapid'); hudState.textContent = '⏩ Холостой ход'; }
-      else if (curKind === 'lead-in') hudState.textContent = '🎯 Врезание';
-      else if (curKind === 'cut') hudState.textContent = '🔥 Резка';
-      else hudState.textContent = '—';
+      hudState.textContent = '—';
     }
 
     const pct = totalLen > 0 ? Math.round(100 * st.progress / totalLen) : 0;
@@ -663,14 +701,12 @@ export function getPlayerTemplate(dataJson) {
     return last ? last.b : null;
   }
 
-  // ═══ ФУНКЦИЯ ПРОВЕРКИ ПРОСКОКА ЧЕРЕЗ МЕДЛЕННЫЙ ВРЕЗ ═══
   function checkSlowPierceBetween(p1, p2) {
     let curLen = 0;
     for (const s of segs) {
       const segStart = curLen;
       const segEnd = curLen + s.len;
       
-      // Если интервал (p1, p2] пересекается с [segStart, segEnd)
       if (segStart < p2 && segEnd > p1) {
         if (s.leadIn && s.feed < maxFeed * 0.9) {
           st.slowPierceUntil = performance.now() + 2000;
@@ -710,7 +746,6 @@ export function getPlayerTemplate(dataJson) {
     const oldProgress = st.progress;
     st.progress = Math.min(totalLen, st.progress + MM_PER_SEC * st.speed * speedFactor * dt);
     
-    // ═══ ПРОВЕРКА: не проскочили ли мы медленный врез? ═══
     if (st.progress > oldProgress) {
       checkSlowPierceBetween(oldProgress, st.progress);
     }

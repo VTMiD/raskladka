@@ -26,7 +26,8 @@ const PATHS_KEY = 'raskladka.paths.v1';
 const CHECKBOX_IDS = [
   'chk-gcode', 'chk-report', 'chk-player', 'chk-qr', 'chk-map', 'chk-dxf',
   'chk-pdf-map', 'chk-pdf-report', 'chk-pdf-labels', 'chk-pdf-spec',
-  'chk-jpg-map', 'chk-jpg-report', 'chk-jpg-labels'
+  'chk-jpg-map', 'chk-jpg-report', 'chk-jpg-labels',
+  'chk-common-line' // <--- ДОБАВЛЕН ID ДЛЯ ГАЛОЧКИ ЕДИНОГО РЕЗА
 ];
 
 function getShopPath() {
@@ -39,7 +40,7 @@ function getShopPath() {
 }
 
 function getProjectBase() {
-  // 1. Номер задания (Rs) — берём цифры из названия активного задания
+  // 1. Номер задания (Rs)
   let rsNum = '01';
   if (state.jobs && state.jobs.length) {
     const activeJob = state.jobs.find(j => j.id === state.activeJobId);
@@ -49,7 +50,7 @@ function getProjectBase() {
     }
   }
 
-  // 2. Номер проекта (PR) — берём из имени текущего файла проекта
+  // 2. Номер проекта (PR)
   let prNum = '01';
   try {
     const projName = getCurrentProjectName() || '';
@@ -59,15 +60,14 @@ function getProjectBase() {
     }
   } catch (_) {}
 
-  // 3. Габариты и толщина (L)
+  // 3. Габариты и толщина
   const params = readParams();
   const sheetDim = `L${Math.round(params.sheetW)}x${Math.round(params.sheetH)}x${params.thickness}`;
 
-  // 4. Количество деталей (Dt) — всего на всех листах
+  // 4. Количество деталей
   const totalParts = (state.sheets || []).reduce((s, sh) => s + (sh.placed || []).length, 0);
   const dtStr = `Dt${totalParts}`;
 
-  // Итоговое имя
   return `Rs${rsNum} PR${prNum} ${sheetDim} ${dtStr}`;
 }
 
@@ -84,7 +84,6 @@ function formatShipmentName(name) {
 }
 
 function getGcodeFileName(si, projectBase, thickness, ext) {
-  // 1. Номер задания (Rs) — берём цифры из названия активного задания
   let rsNum = '01';
   if (state.jobs && state.jobs.length) {
     const activeJob = state.jobs.find(j => j.id === state.activeJobId);
@@ -94,26 +93,20 @@ function getGcodeFileName(si, projectBase, thickness, ext) {
     }
   }
 
-  // 2. Номер проекта (PR) — берём из имени текущего файла проекта (projectBase)
   let prNum = '01';
   const m = String(projectBase || '').match(/^PR(\d+)/i);
   if (m) prNum = String(m[1]).padStart(2, '0');
 
-  // 3. Габариты и толщина (L)
   const params = readParams();
   const sheetDim = `L${Math.round(params.sheetW)}x${Math.round(params.sheetH)}x${params.thickness}`;
 
-  // 4. Количество деталей (Dt) — на конкретном листе (индекс si)
   let dtCount = 0;
   if (state.sheets && state.sheets[si]) {
     dtCount = state.sheets[si].placed.length;
   }
   const dtStr = `Dt${dtCount}`;
 
-  // 5. Расширение
   const cleanExt = String(ext || '.tap').replace(/^\./, '');
-
-  // Итоговое имя: Rs01 PR01 L1500x1250x3 Dt13.tap
   return `Rs${rsNum} PR${prNum} ${sheetDim} ${dtStr}.${cleanExt}`;
 }
 
@@ -199,6 +192,12 @@ export function openShipmentModal() {
                   <input type="checkbox" id="chk-gcode" data-role="include-gcode" checked>
                   <span><b>G-code (.tap)</b> — файлы для станка, по листам</span>
                 </label>
+                <!-- ═══ НОВАЯ ГАЛОЧКА ЕДИНОГО РЕЗА ═══ -->
+                <label title="Режет общие линии между деталями один раз (требует зазора 0 мм)" style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0; color:#004a99;">
+                  <input type="checkbox" id="chk-common-line" data-role="common-line">
+                  <span><b>Единый рез (Common Line)</b></span>
+                </label>
+                <!-- ═══════════════════════════════════ -->
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;">
                   <input type="checkbox" id="chk-report" data-role="include-report" checked>
                   <span><b>HTML Отчёт</b> — спецификация деталей</span>
@@ -422,6 +421,7 @@ export function openShipmentModal() {
       mapJpg:     q('[data-role="jpg-map"]').checked,
       reportJpg:  q('[data-role="jpg-report"]').checked,
       labelsJpg:  q('[data-role="jpg-labels"]').checked,
+      commonLine: q('[data-role="common-line"]').checked, // <--- НОВОЕ
     };
 
     const anyChecked = Object.values(want).some(v => v);
@@ -429,6 +429,16 @@ export function openShipmentModal() {
       alert('Выберите хотя бы один пункт.');
       return;
     }
+
+    // ═══ ПРОВЕРКА ЗАЗОРА ДЛЯ ЕДИНОГО РЕЗА ═══
+    if (want.commonLine) {
+      const layoutParams = readParams();
+      if (layoutParams.gap > 0.1) {
+        alert('⚠ Для работы функции «Единый рез» (Общая линия) необходимо установить зазор между деталями равным 0 мм.\n\nСейчас в параметрах заготовки стоит зазор: ' + layoutParams.gap + ' мм.\n\nПожалуйста, измените зазор на 0 и нажмите «Разложить» заново.');
+        return;
+      }
+    }
+    // ═══════════════════════════════════════
 
     doBtn.disabled = true;
     doBtn.textContent = '⏳ Собираю…';
@@ -500,6 +510,7 @@ async function buildShipmentFiles(base, fullProjectName, want, onProgress) {
           useTsp: true,
           cutCw: true,
           partByPart: true,
+          commonLine: want.commonLine, // <--- ПЕРЕДАЕМ ФЛАГ
         });
         files.push({ name: fileName, content: gcode, mime: 'text/plain;charset=utf-8' });
       } catch (e) {
