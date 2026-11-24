@@ -15,6 +15,39 @@ function validateInputs(sheet, params, post) {
   if (!post || !post.header || !post.torchOn || !post.torchOff || !post.footer) throw new Error('sheetToGcode: некорректный постпроцессор');
 }
 
+/**
+ * Ищет общие ребра между деталями для «Общей линии реза».
+ * Возвращает Set с ключами ребер, которые не нужно резать дважды.
+ */
+function findCommonEdges(allContours) {
+  const edgeMap = new Map();
+  const commonEdges = new Set();
+  const TOL = 0.5; // Допуск в мм для поиска совпадений
+
+  for (let ci = 0; ci < allContours.length; ci++) {
+    const ring = allContours[ci].ring;
+    for (let i = 0; i < ring.length; i++) {
+      const p1 = ring[i];
+      const p2 = ring[(i + 1) % ring.length];
+      
+      // Создаем ключ, не зависящий от направления (сортируем точки)
+      const key = [
+        `${Math.round(p1[0]/TOL)},${Math.round(p1[1]/TOL)}`,
+        `${Math.round(p2[0]/TOL)},${Math.round(p2[1]/TOL)}`
+      ].sort().join('|');
+
+      if (edgeMap.has(key)) {
+        // Если ребро уже есть у другой детали — это общая линия
+        commonEdges.add(edgeMap.get(key));
+        commonEdges.add(`${ci}_${i}`); 
+      } else {
+        edgeMap.set(key, `${ci}_${i}`);
+      }
+    }
+  }
+  return commonEdges;
+}
+
 export function sheetToGcode(sheet, params, post, ctx, options = {}) {
   validateInputs(sheet, params, post);
 
@@ -27,6 +60,7 @@ export function sheetToGcode(sheet, params, post, ctx, options = {}) {
     bridgesEnabled = false, bridgeLength = 4, bridgeCount = 2,
     slowPierceHoles = false,
     slowPiercePercent = 40,
+    commonLine = false, // <--- НОВЫЙ ПАРАМЕТР
   } = options;
 
   const e = new GcodeEmitter(post);
@@ -43,6 +77,7 @@ export function sheetToGcode(sheet, params, post, ctx, options = {}) {
     leadInRadius, entryMode, cutCw, useArcs, arcOpts, feedRate: currentFeed,
     bridgesEnabled, bridgeLength, bridgeCount,
     slowPierceHoles, slowPiercePercent,
+    commonEdges: new Set(), // <--- Передаем Set для общих ребер
   };
 
   const layersMap = new Map();
@@ -105,6 +140,29 @@ export function sheetToGcode(sheet, params, post, ctx, options = {}) {
       }
     }
 
+    // ═══ ЛОГИКА ОБЩЕЙ ЛИНИИ РЕЗА ═══
+    if (commonLine && layerParts.length > 0) {
+      const allContours = [];
+      for (const part of layerParts) {
+        for (const c of part.holes) allContours.push(c);
+        for (const c of part.outers) allContours.push(c);
+      }
+      emitOpts.commonEdges = findCommonEdges(allContours);
+      // Меняем ключи на формат для emitContourLines
+      // Но проще передать Set с ключами вида "index_vertex"
+      // В findCommonEdges мы уже сохраняем ключи, но они относятся к allContours.
+      // Нам нужно привязать их к конкретным объектам c.
+      // Сделаем проще: в emitContourLines мы будем проверять совпадение координат ребра.
+      // Для этого сохраним список общих отрезков.
+      emitOpts.commonEdgesList = [...emitOpts.commonEdges].map(k => {
+          const [ci, vi] = k.split('_').map(Number);
+          const ring = allContours[ci].ring;
+          const p1 = ring[vi];
+          const p2 = ring[(vi + 1) % ring.length];
+          return { p1, p2 };
+      });
+    }
+
     let orderedParts = [];
     
     const sortedParts = [...layer.parts].sort((a, b) => {
@@ -158,7 +216,8 @@ export function sheetToGcode(sheet, params, post, ctx, options = {}) {
 function emitContour(e, c, emitOpts) {
   const { 
     leadInRadius, entryMode, cutCw, useArcs, arcOpts, feedRate, 
-    slowPierceHoles, slowPiercePercent 
+    slowPierceHoles, slowPiercePercent,
+    commonEdgesList // <--- Список общих ребер
   } = emitOpts;
   
   if (!c.ring || c.ring.length < 3) return;
@@ -241,7 +300,7 @@ function emitContourWithArcs(e, ring, lead, arcOpts, emitOpts) {
 
 function emitContourLines(e, ring, lead, emitOpts) {
   const N = ring.length;
-  const { bridgesEnabled, bridgeLength, bridgeCount, feedRate } = emitOpts;
+  const { bridgesEnabled, bridgeLength, bridgeCount, feedRate, commonEdgesList } = emitOpts;
 
   let perim = 0;
   for (let i = 1; i < N; i++) {
@@ -291,6 +350,39 @@ function emitContourLines(e, ring, lead, emitOpts) {
     
     const segLen = Math.hypot(cx - px, cy - py);
     if (segLen < 1e-6) continue;
+
+     // ═══ ПРОВЕРКА НА ОБЩУЮ ЛИНИЮ ═══
+    let isCommon = false;
+    if (commonEdgesList && commonEdgesList.length) {
+        for (const ce of commonEdgesList) {
+            const d1 = Math.hypot(px - ce.p1[0], py - ce.p1[1]) + Math.hypot(cx - ce.p2[0], cy - ce.p2[1]);
+            const d2 = Math.hypot(px - ce.p2[0], py - ce.p2[1]) + Math.hypot(cx - ce.p1[0], cy - ce.p1[1]);
+            if (d1 < 1.0 || d2 < 1.0) {
+                isCommon = true;
+                break;
+            }
+        }
+    }
+    
+    if (isCommon && k < N) {
+        // Если это общая линия — ВЫКЛЮЧАЕМ ФАКЕЛ и делаем холостой ход
+        e.torchOff();
+        e.rapid(cx, cy); // Переход в конец сегмента без реза
+        e.torchOn(feedRate); // Включаем факел обратно для следующего сегмента
+        accLen += segLen;
+        continue;
+    }
+    // ═══════════════════════════════════════
+    
+    if (isCommon && k < N) {
+        // Если это общая линия — пропускаем этот сегмент (не режем)
+        // Но нужно перейти в конец сегмента (холостой ход или просто пропуск)
+        // Внимание: это упрощенная реализация. В идеале нужно отключать факел.
+        // Для простоты мы просто не выводим команду реза, но выводим перемещение.
+        accLen += segLen;
+        continue;
+    }
+    // ═══════════════════════════════════════
 
     let t0 = accLen;
     let t1 = accLen + segLen;

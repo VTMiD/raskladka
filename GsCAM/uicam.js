@@ -147,7 +147,7 @@ function injectStyles() {
     }
     
     .gscam-bridge-params {
-      display: none; /* По умолчанию скрыто */
+      display: none;
       margin-top: 8px;
       padding-top: 8px;
       border-top: 1px dashed #9ed5a4;
@@ -246,7 +246,12 @@ function askGcodeOptions() {
       if (cnt && !isNaN(parseInt(cnt, 10))) savedBridgeCount = parseInt(cnt, 10);
     } catch (_) {}
 
-    // ═══ НОВОЕ: Загрузка состояния галочки и процента "Медленный врез" ═══
+    // ═══ ЗАГРУЗКА СОСТОЯНИЯ ДЛЯ ОБЩЕЙ ЛИНИИ ═══
+    let savedCommonLine = false;
+    try {
+      savedCommonLine = localStorage.getItem('raskladka.commonLine.v1') === 'true';
+    } catch (_) {}
+
     let savedSlowPierceHoles = false;
     let savedSlowPiercePercent = 40;
     try {
@@ -296,7 +301,11 @@ function askGcodeOptions() {
             <label><input type="checkbox" data-role="cutCw" checked> По часовой</label>
             <label><input type="checkbox" data-role="partByPart" checked> Подетально</label>
             <label><input type="checkbox" data-role="useArcs"> Arc-fitting</label>
-            <!-- ═══ НОВАЯ ГАЛОЧКА И ПОЛЕ ПРОЦЕНТА ═══ -->
+            
+            <label title="Режет общие линии между деталями один раз (требует зазора 0 мм)" style="display:flex; align-items:center; gap:4px;">
+              <input type="checkbox" data-role="commonLine" ${savedCommonLine ? 'checked' : ''}> Единый рез
+            </label>
+
             <label title="Замедляет скорость подачи при врезании во внутренние отверстия" style="display:flex; align-items:center; gap:4px;">
               <input type="checkbox" data-role="slowPierceHoles" ${savedSlowPierceHoles ? 'checked' : ''}> Медленный врез
               <input type="number" data-role="slowPiercePercent" value="${savedSlowPiercePercent}" step="5" min="5" max="100" style="width:45px; padding:1px 3px; font-size:11px; margin-left:4px; border:1px solid #ccc; border-radius:3px;"> %
@@ -459,9 +468,14 @@ function askGcodeOptions() {
       } catch (e) {}
     });
 
-    // ═══ ОБРАБОТЧИКИ ДЛЯ ГАЛОЧКИ И ПРОЦЕНТА ═══
     const chkSlowPierce = q('[data-role="slowPierceHoles"]');
     const percentSlowPierce = q('[data-role="slowPiercePercent"]');
+    const chkCommonLine = q('[data-role="commonLine"]');
+
+    chkCommonLine.addEventListener('change', (e) => {
+      try { localStorage.setItem('raskladka.commonLine.v1', e.target.checked ? 'true' : 'false'); } catch (_) {}
+      doPreview();
+    });
 
     chkSlowPierce.addEventListener('change', (e) => {
       try { localStorage.setItem('raskladka.slowPierceHoles.v1', e.target.checked ? 'true' : 'false'); } catch (_) {}
@@ -531,23 +545,30 @@ function askGcodeOptions() {
       doPreview();
     });
 
-    const readOpts = () => ({
-      postId: postSel.value,
-      kerf: parseFloat(q('[data-role="kerf"]').value) || 0,
-      leadInRadius: parseFloat(q('[data-role="leadInRadius"]').value) || 1.28,
-      cutFeed: parseFloat(feedInput.value) || null,
-      useTsp: q('[data-role="useTsp"]').checked,
-      cutCw: q('[data-role="cutCw"]').checked,
-      partByPart: q('[data-role="partByPart"]').checked,
-      useArcs: q('[data-role="useArcs"]').checked,
-      slowPierceHoles: chkSlowPierce.checked,
-      slowPiercePercent: parseFloat(percentSlowPierce.value) || 40, // <--- ЧИТАЕМ ПРОЦЕНТ
-      baseName: baseNameEl.value.trim(),
-      cutOrderStrategy: cutOrderSel.value,
-      bridgesEnabled: chkBridges.checked,
-      bridgeLength: parseFloat(bridgeLengthEl.value) || 4,
-      bridgeCount: parseInt(bridgeCountEl.value, 10) || 2,
-    });
+    const readOpts = () => {
+      const opts = {
+        postId: postSel.value,
+        kerf: parseFloat(q('[data-role="kerf"]').value) || 0,
+        leadInRadius: parseFloat(q('[data-role="leadInRadius"]').value) || 1.28,
+        cutFeed: parseFloat(feedInput.value) || null,
+        useTsp: q('[data-role="useTsp"]').checked,
+        cutCw: q('[data-role="cutCw"]').checked,
+        partByPart: q('[data-role="partByPart"]').checked,
+        useArcs: q('[data-role="useArcs"]').checked,
+        slowPierceHoles: chkSlowPierce.checked,
+        slowPiercePercent: parseFloat(percentSlowPierce.value) || 40,
+        commonLine: chkCommonLine.checked,
+        baseName: baseNameEl.value.trim(),
+        cutOrderStrategy: cutOrderSel.value,
+        bridgesEnabled: chkBridges.checked,
+        bridgeLength: parseFloat(bridgeLengthEl.value) || 4,
+        bridgeCount: parseInt(bridgeCountEl.value, 10) || 2,
+      };
+      if (opts.cutFeed && opts.cutFeed > 0) {
+        try { localStorage.setItem('raskladka.cutFeed.v1', String(opts.cutFeed)); } catch (_) {}
+      }
+      return opts;
+    };
 
     const buildGcode = (sheetIdx) => {
       const opts = readOpts();
@@ -588,7 +609,8 @@ function askGcodeOptions() {
           bridgeLength: opts.bridgeLength,
           bridgeCount: opts.bridgeCount,
           slowPierceHoles: opts.slowPierceHoles,
-          slowPiercePercent: opts.slowPiercePercent, // <--- ПЕРЕДАЕМ ПРОЦЕНТ
+          slowPiercePercent: opts.slowPiercePercent,
+          commonLine: opts.commonLine,
         }
       );
 
@@ -635,6 +657,16 @@ function askGcodeOptions() {
     q('[data-role="export"]').onclick = async () => {
       const opts = readOpts();
       if (!opts.baseName) { alert('Укажите имя файла'); return; }
+
+      // ═══ ПРОВЕРКА ДЛЯ ОБЩЕЙ ЛИНИИ РЕЗА ═══
+      if (opts.commonLine) {
+        const layoutParams = readParams();
+        if (layoutParams.gap > 0.1) {
+          alert('⚠ Для работы функции «Единый рез» (Общая линия) необходимо установить зазор между деталями равным 0 мм.\n\nСейчас в параметрах заготовки стоит зазор: ' + layoutParams.gap + ' мм.\n\nПожалуйста, измените зазор на 0 и нажмите «Разложить» заново.');
+          return;
+        }
+      }
+      // ═══════════════════════════════════════
 
       const btn = q('[data-role="export"]');
       btn.disabled = true;
