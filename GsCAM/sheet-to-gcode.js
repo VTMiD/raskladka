@@ -16,14 +16,24 @@ function validateInputs(sheet, params, post) {
 }
 
 /**
- * Ищет общие ребра между деталями для «Общей линии реза».
+ * Ищет общие ребра между деталями и краем листа для «Общей линии реза».
  * Сравнивает ребра без учета направления (сортирует точки).
- * Возвращает Set с ключами ребер, которые не нужно резать дважды.
  */
-function findCommonEdges(allContours) {
+function findCommonEdges(allContours, sheetW, sheetH, edge) {
   const edgeMap = new Map();
   const commonEdges = new Set();
-  const TOL = 0.5; // Допуск в мм
+  const TOL = 1.0; // Увеличенный допуск
+
+  // Добавляем контур листа как ещё один "контур" для поиска общих линий
+  if (sheetW > 0 && sheetH > 0) {
+    const sheetRing = [
+      [edge, edge],
+      [edge + sheetW, edge],
+      [edge + sheetW, edge + sheetH],
+      [edge, edge + sheetH]
+    ];
+    allContours.push({ ring: sheetRing });
+  }
 
   for (let ci = 0; ci < allContours.length; ci++) {
     const ring = allContours[ci].ring;
@@ -31,13 +41,11 @@ function findCommonEdges(allContours) {
       const p1 = ring[i];
       const p2 = ring[(i + 1) % ring.length];
       
-      // Ключ, не зависящий от направления: сортируем строковые представления точек
       const pt1 = `${Math.round(p1[0]/TOL)},${Math.round(p1[1]/TOL)}`;
       const pt2 = `${Math.round(p2[0]/TOL)},${Math.round(p2[1]/TOL)}`;
       const key = [pt1, pt2].sort().join('|');
 
       if (edgeMap.has(key)) {
-        // Если ребро уже есть у другой детали — это общая линия
         commonEdges.add(edgeMap.get(key));
         commonEdges.add(`${ci}_${i}`); 
       } else {
@@ -60,7 +68,7 @@ export function sheetToGcode(sheet, params, post, ctx, options = {}) {
     bridgesEnabled = false, bridgeLength = 4, bridgeCount = 2,
     slowPierceHoles = false,
     slowPiercePercent = 40,
-    commonLine = false, // <--- НОВЫЙ ПАРАМЕТР
+    commonLine = false,
   } = options;
 
   const e = new GcodeEmitter(post);
@@ -77,7 +85,7 @@ export function sheetToGcode(sheet, params, post, ctx, options = {}) {
     leadInRadius, entryMode, cutCw, useArcs, arcOpts, feedRate: currentFeed,
     bridgesEnabled, bridgeLength, bridgeCount,
     slowPierceHoles, slowPiercePercent,
-    commonEdgesList: [], // <--- Список общих отрезков для emitContourLines
+    commonEdgesList: [],
   };
 
   const layersMap = new Map();
@@ -147,16 +155,16 @@ export function sheetToGcode(sheet, params, post, ctx, options = {}) {
         for (const c of part.holes) allContours.push(c);
         for (const c of part.outers) allContours.push(c);
       }
-      const commonKeys = findCommonEdges(allContours);
+      const commonKeys = findCommonEdges(allContours, params.sheetW - 2*params.edge, params.sheetH - 2*params.edge, params.edge);
       
-      // Преобразуем ключи в список отрезков для emitContourLines
       emitOpts.commonEdgesList = [...commonKeys].map(k => {
           const [ci, vi] = k.split('_').map(Number);
+          if (ci >= allContours.length) return null; // это край листа, пропускаем
           const ring = allContours[ci].ring;
           const p1 = ring[vi];
           const p2 = ring[(vi + 1) % ring.length];
           return { p1, p2 };
-      });
+      }).filter(Boolean);
     }
 
     let orderedParts = [];
@@ -213,7 +221,7 @@ function emitContour(e, c, emitOpts) {
   const { 
     leadInRadius, entryMode, cutCw, useArcs, arcOpts, feedRate, 
     slowPierceHoles, slowPiercePercent,
-    commonEdgesList // <--- Список общих ребер
+    commonEdgesList
   } = emitOpts;
   
   if (!c.ring || c.ring.length < 3) return;
@@ -298,7 +306,6 @@ function emitContourLines(e, ring, lead, emitOpts) {
   const N = ring.length;
   const { bridgesEnabled, bridgeLength, bridgeCount, feedRate, commonEdgesList } = emitOpts;
 
-  // 1. Считаем периметр и мостики
   let perim = 0;
   for (let i = 1; i < N; i++) {
     perim += Math.hypot(ring[i][0] - ring[i-1][0], ring[i][1] - ring[i-1][1]);
@@ -324,7 +331,6 @@ function emitContourLines(e, ring, lead, emitOpts) {
     bridges.sort((a, b) => a.start - b.start);
   }
 
-  // 2. Функция для получения индекса точки
   function getIdx(k) {
     if (lead.entryType === 'edge') {
       const firstIdx = lead.walkDir > 0 ? lead.endVertexIdx : lead.startVertexIdx;
@@ -333,19 +339,6 @@ function emitContourLines(e, ring, lead, emitOpts) {
       return (lead.entryIndex + k * lead.walkDir + N * 1000) % N;
     }
   }
-
-  // 3. Функция для проверки, является ли сегмент общим
-  const isCommonSegment = (px, py, cx, cy) => {
-    if (!commonEdgesList || !commonEdgesList.length) return false;
-    for (const ce of commonEdgesList) {
-        const d1 = Math.hypot(px - ce.p1[0], py - ce.p1[1]) + Math.hypot(cx - ce.p2[0], cy - ce.p2[1]);
-        const d2 = Math.hypot(px - ce.p2[0], py - ce.p2[1]) + Math.hypot(cx - ce.p1[0], cy - ce.p1[1]);
-        if (d1 < 1.0 || d2 < 1.0) {
-            return true;
-        }
-    }
-    return false;
-  };
 
   const interp = (px, py, cx, cy, t) => [px + (cx - px) * t, py + (cy - py) * t];
 
@@ -362,41 +355,26 @@ function emitContourLines(e, ring, lead, emitOpts) {
     const segLen = Math.hypot(cx - px, cy - py);
     if (segLen < 1e-6) continue;
 
-    // ═══ ЕДИНЫЙ РЕЗ: проверяем, не общий ли это сегмент ═══
-    if (isCommonSegment(px, py, cx, cy) && k < N) {
-      // Находим конец группы общих сегментов
-      let endK = k;
-      while (endK < N) {
-        const nextPrev = getIdx(endK);
-        const nextCur = getIdx(endK + 1);
-        const npx = ring[nextPrev][0], npy = ring[nextPrev][1];
-        const ncx = ring[nextCur][0], ncy = ring[nextCur][1];
-        if (!isCommonSegment(npx, npy, ncx, ncy)) break;
-        endK++;
-      }
-
-      // Проезжаем всю общую группу с выключенным факелом
-      e.torchOff();
-      e.rapid(px, py); // Начало группы
-      
-      // Перемещаемся в конец группы
-      const endIdx = getIdx(endK);
-      e.rapid(ring[endIdx][0], ring[endIdx][1]);
-      
-      e.torchOn(feedRate); // Включаем факел для продолжения
-      
-      // Обновляем accLen и перепрыгиваем через группу
-      for (let j = k; j <= endK; j++) {
-        const i1 = getIdx(j - 1);
-        const i2 = getIdx(j);
-        accLen += Math.hypot(ring[i2][0] - ring[i1][0], ring[i2][1] - ring[i1][1]);
-      }
-      k = endK; // Перепрыгиваем
-      continue;
+    let isCommon = false;
+    if (commonEdgesList && commonEdgesList.length) {
+        for (const ce of commonEdgesList) {
+            const d1 = Math.hypot(px - ce.p1[0], py - ce.p1[1]) + Math.hypot(cx - ce.p2[0], cy - ce.p2[1]);
+            const d2 = Math.hypot(px - ce.p2[0], py - ce.p2[1]) + Math.hypot(cx - ce.p1[0], cy - ce.p1[1]);
+            if (d1 < 1.0 || d2 < 1.0) {
+                isCommon = true;
+                break;
+            }
+        }
     }
-    // ═══════════════════════════════════════
+    
+    if (isCommon && k < N) {
+        e.torchOff();
+        e.rapid(cx, cy);
+        e.torchOn(feedRate);
+        accLen += segLen;
+        continue;
+    }
 
-    // Дальше идёт обычный код с мостиками (без изменений)
     let t0 = accLen;
     let t1 = accLen + segLen;
     let currentT = t0;

@@ -538,31 +538,31 @@ export function getPlayerTemplate(dataJson) {
       const isCur = currentCid > 0 && s.cid === currentCid;
       const isDoneC = s.cid > 0 && done.has(s.cid) && !isCur;
 
-      if (s.type === 'rapid') {
-        ctx.strokeStyle = palette.rapid;
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([5, 5]);
-      } else if (s.leadIn) {
-        ctx.strokeStyle = isDoneC ? palette.cutDone : palette.leadIn;
-        ctx.lineWidth = isCur ? 3 : 2;
-        ctx.setLineDash([]);
-      } else if (s.torch) {
-        if (isCur) { ctx.strokeStyle = palette.cutCurrent; ctx.lineWidth = 3; }
-        else if (isDoneC) { ctx.strokeStyle = palette.cutDone; ctx.lineWidth = 2; }
-        else { ctx.strokeStyle = palette.cutFuture; ctx.lineWidth = 1.5; }
-        ctx.setLineDash([]);
-      } else {
-        ctx.strokeStyle = palette.rapid;
-        ctx.lineWidth = 1;
-        ctx.setLineDash([]);
+            if (s.type === 'rapid') {
+        let isCommonLine = false;
+        if (st.progress > 0) {
+          let searchLen = 0;
+          for (let i = segs.length - 1; i >= 0; i--) {
+            const s2 = segs[i];
+            searchLen += s2.len;
+            if (searchLen > 5) break;
+            const kind2 = s2.type === 'rapid' ? 'rapid' : s2.leadIn ? 'lead-in' : s2.torch ? 'cut' : 'idle';
+            if (kind2 === 'cut') { isCommonLine = true; break; }
+            // Если встретили холостой ход, но он был недавно — не прерываем поиск
+            if (kind2 === 'rapid' && searchLen > 2) break;
+          }
+        }
+        
+        if (isCommonLine) {
+          ctx.strokeStyle = palette.commonLine;
+          ctx.lineWidth = 2;
+          ctx.setLineDash([4, 4]);
+        } else {
+          ctx.strokeStyle = palette.rapid;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([5, 5]);
+        }
       }
-
-      ctx.beginPath();
-      ctx.moveTo(pax, pay); ctx.lineTo(pbx, pby);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      curLen += s.len;
-    }
 
     if (currentCid > 0) {
       const bb = contourBBox.get(currentCid);
@@ -613,33 +613,6 @@ export function getPlayerTemplate(dataJson) {
         ctx.stroke();
       }
 
-      // ═══ БЕЙДЖ ДЛЯ ЕДИНОГО РЕЗА ═══
-      if (curKind === 'rapid' && st.progress > 0) {
-        let prevKind = '—';
-        let prevLen = 0;
-        for (const s of segs) {
-          if (prevLen + s.len >= st.progress - 1) {
-            prevKind = s.type === 'rapid' ? 'rapid' : s.leadIn ? 'lead-in' : s.torch ? 'cut' : 'idle';
-            break;
-          }
-          prevLen += s.len;
-        }
-        if (prevKind === 'cut') {
-          ctx.fillStyle = '#00ccff';
-          ctx.font = 'bold 16px sans-serif';
-          ctx.textAlign = 'left';
-          ctx.shadowColor = '#00ccff';
-          ctx.shadowBlur = 12;
-          ctx.fillText('✂ ЕДИНЫЙ РЕЗ (холостой ход)', px + 20, py - 20);
-          ctx.shadowBlur = 0;
-          ctx.strokeStyle = '#00ccff';
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(px, py, 14, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-      }
-
       hudX.textContent = pos[0].toFixed(1);
       hudY.textContent = pos[1].toFixed(1);
     } else {
@@ -653,16 +626,7 @@ export function getPlayerTemplate(dataJson) {
       hudState.textContent = '⚡ Медленный врез';
     } else if (curKind === 'rapid') {
       hudSpeed.classList.add('rapid');
-      let prevKind = '—';
-      let prevLen = 0;
-      for (const s of segs) {
-        if (prevLen + s.len >= st.progress - 1) {
-          prevKind = s.type === 'rapid' ? 'rapid' : s.leadIn ? 'lead-in' : s.torch ? 'cut' : 'idle';
-          break;
-        }
-        prevLen += s.len;
-      }
-      hudState.textContent = (prevKind === 'cut') ? '✂ Единый рез' : '⏩ Холостой ход';
+      hudState.textContent = '⏩ Холостой ход';
     } else if (curKind === 'lead-in') {
       hudState.textContent = '🎯 Врезание';
     } else if (curKind === 'cut') {
