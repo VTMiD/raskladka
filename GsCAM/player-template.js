@@ -215,20 +215,114 @@ export function getPlayerTemplate(dataJson) {
   const PALETTES = {
     default: {
       bg: '#1e1e1e', axis: 'rgba(80,80,80,0.5)', sheetBorder: 'rgba(255,255,255,0.2)',
-      rapid: 'rgba(130,130,130,0.75)', cutFuture: 'rgba(255,100,100,0.2)',
+      rapid: 'rgba(130,130,130,0.75)', cutFuture: 'rgba(255,255,255,0.3)',
       cutCurrent: '#ff3333', cutDone: '#ffffff', leadIn: '#ffd24a',
       bbox: '#0080ff', bboxFill: 'rgba(0, 128, 255, 0.08)',
       toolGlow: 'rgba(255,220,80,0.9)', toolCore: '#ffd24a', toolStroke: '#fff',
+      commonLine: '#00ccff',
+      slowPierce: '#ffd24a',
     },
     sheetcam: {
       bg: '#4a1010', axis: 'rgba(255,200,200,0.15)', sheetBorder: 'rgba(255,255,255,0.25)',
-      rapid: 'rgba(100,150,255,0.7)', cutFuture: 'rgba(255,255,255,0.1)',
+      rapid: 'rgba(100,150,255,0.7)', cutFuture: 'rgba(255,255,255,0.2)',
       cutCurrent: '#ff8c2a', cutDone: '#ffffff', leadIn: '#00ffff',
       bbox: '#4488ff', bboxFill: 'rgba(68, 136, 255, 0.08)',
       toolGlow: 'rgba(255,255,255,0.9)', toolCore: '#ffffff', toolStroke: '#4488ff',
+      commonLine: '#00ccff',
+      slowPierce: '#ffd24a',
     },
   };
   const palette = PALETTES[DATA.theme] || PALETTES.default;
+
+  // ═══ ПРЕДВАРИТЕЛЬНЫЙ АНАЛИЗ: ПОИСК ОБЩИХ ЛИНИЙ ═══
+  function findCommonLines(segs, sheetW, sheetH) {
+    const isCommon = new Array(segs.length).fill(false);
+    const TOL = 0.5;
+    const CELL = 100;
+    
+    // 1. Помечаем линии, лежащие на краю листа
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      if (s.len < 1) continue;
+      const ax = s.a[0], ay = s.a[1], bx = s.b[0], by = s.b[1];
+      const onLeft = Math.abs(ax) < TOL && Math.abs(bx) < TOL;
+      const onRight = Math.abs(ax - sheetW) < TOL && Math.abs(bx - sheetW) < TOL;
+      const onBottom = Math.abs(ay) < TOL && Math.abs(by) < TOL;
+      const onTop = Math.abs(ay - sheetH) < TOL && Math.abs(by - sheetH) < TOL;
+      if (onLeft || onRight || onBottom || onTop) {
+        isCommon[i] = true;
+      }
+    }
+
+    // 2. Ищем перекрытия между сегментами
+    const grid = new Map();
+    function cellKey(cx, cy) { return cx + ',' + cy; }
+    
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      if (s.len < 1) continue;
+      if (s.type !== 'cut' && s.type !== 'lead-in' && s.type !== 'rapid') continue;
+      
+      const minX = Math.min(s.a[0], s.b[0]);
+      const maxX = Math.max(s.a[0], s.b[0]);
+      const minY = Math.min(s.a[1], s.b[1]);
+      const maxY = Math.max(s.a[1], s.b[1]);
+      
+      const cx0 = Math.floor(minX / CELL), cx1 = Math.floor(maxX / CELL);
+      const cy0 = Math.floor(minY / CELL), cy1 = Math.floor(maxY / CELL);
+      
+      for (let cx = cx0; cx <= cx1; cx++) {
+        for (let cy = cy0; cy <= cy1; cy++) {
+          const key = cellKey(cx, cy);
+          if (!grid.has(key)) grid.set(key, []);
+          grid.get(key).push(i);
+        }
+      }
+    }
+    
+    const checked = new Set();
+    for (const list of grid.values()) {
+      for (let a = 0; a < list.length; a++) {
+        for (let b = a + 1; b < list.length; b++) {
+          const i = list[a], j = list[b];
+          const pairKey = i < j ? i + ',' + j : j + ',' + i;
+          if (checked.has(pairKey)) continue;
+          checked.add(pairKey);
+          
+          const s1 = segs[i], s2 = segs[j];
+          if (s1.len < 1 || s2.len < 1) continue;
+          
+          const iCut = s1.type !== 'rapid';
+          const jCut = s2.type !== 'rapid';
+          if (!iCut && !jCut) continue;
+          
+          const ax = s1.a[0], ay = s1.a[1], bx = s1.b[0], by = s1.b[1];
+          const cx = s2.a[0], cy = s2.a[1], dx = s2.b[0], dy = s2.b[1];
+          
+          const len1 = Math.hypot(bx-ax, by-ay);
+          const dx1 = (bx-ax)/len1, dy1 = (by-ay)/len1;
+          
+          const distC = Math.abs((cx-ax)*dy1 - (cy-ay)*dx1);
+          if (distC > TOL) continue;
+          const distD = Math.abs((dx-ax)*dy1 - (dy-ay)*dx1);
+          if (distD > TOL) continue;
+          
+          const tc = ((cx-ax)*dx1 + (cy-ay)*dy1) / len1;
+          const td = ((dx-ax)*dx1 + (dy-ay)*dy1) / len1;
+          const t0 = Math.max(0, Math.min(tc, td));
+          const t1 = Math.min(1, Math.max(tc, td));
+          
+          if (t1 - t0 < 0.01) continue;
+          if ((t1 - t0) * len1 < 1) continue;
+          
+          isCommon[i] = true;
+          isCommon[j] = true;
+        }
+      }
+    }
+    
+    return isCommon;
+  }
 
   function makeDistortionCurve(amount) {
     const k = typeof amount === 'number' ? amount : 50;
@@ -340,6 +434,19 @@ export function getPlayerTemplate(dataJson) {
     if (s.feed && s.feed > maxFeed) maxFeed = s.feed;
   }
 
+  const sheetW = DATA.sheetW || 1500;
+  const sheetH = DATA.sheetH || 1250;
+
+  // ═══ ЗАПУСКАЕМ ПРЕДВАРИТЕЛЬНЫЙ АНАЛИЗ ═══
+  const isCommonSeg = findCommonLines(segs, sheetW, sheetH);
+
+  const isSlowPierce = new Array(segs.length).fill(false);
+  for (let i = 0; i < segs.length; i++) {
+    if (segs[i].leadIn && segs[i].feed < maxFeed * 0.9) {
+      isSlowPierce[i] = true;
+    }
+  }
+
   const SP_KEY = 'raskladka.embeddedPlayer.speed';
   const SND_KEY = 'raskladka.embeddedPlayer.sound';
   const SPEED_OPTIONS = [1, 5, 10, 20, 50, 100];
@@ -418,6 +525,7 @@ export function getPlayerTemplate(dataJson) {
     progress: 0, playing: false, speed: loadSpeed(),
     lastTs: 0, rafId: null, view: null,
     slowPierceUntil: 0, lastSlowFeed: 0,
+    commonLineUntil: 0, // <--- Таймер для бейджа
   };
   speedSel.value = String(st.speed);
 
@@ -489,6 +597,7 @@ export function getPlayerTemplate(dataJson) {
     let currentCid = 0, curOpIdx = -1, curLineNo = 0, curKind = '—';
     let isTorchOn = false;
     let currentFeed = maxFeed;
+    let currentSegIdx = -1;
     
     const done = new Set();
     let scanLen = 0;
@@ -508,8 +617,15 @@ export function getPlayerTemplate(dataJson) {
         curKind = s.type === 'rapid' ? 'rapid' : s.leadIn ? 'lead-in' : s.torch ? 'cut' : 'idle';
         isTorchOn = s.torch && s.type !== 'rapid';
         currentFeed = s.feed || maxFeed;
+        currentSegIdx = i;
       }
     }
+
+    // ═══ ОБНОВЛЯЕМ ТАЙМЕР БЕЙДЖА ═══
+    if (currentSegIdx >= 0 && isCommonSeg[currentSegIdx]) {
+      st.commonLineUntil = performance.now() + 2000; // Показывать 2 секунды
+    }
+    const showCommonBadge = st.commonLineUntil && performance.now() < st.commonLineUntil;
 
     if (st.playing) {
       if (isTorchOn) soundEngine.setTorch(true);
@@ -519,7 +635,8 @@ export function getPlayerTemplate(dataJson) {
     }
 
     let curLen = 0;
-    for (const s of segs) {
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
       const segStart = curLen;
       const segEnd = curLen + s.len;
       const isDone = segStart >= st.progress;
@@ -538,22 +655,8 @@ export function getPlayerTemplate(dataJson) {
       const isCur = currentCid > 0 && s.cid === currentCid;
       const isDoneC = s.cid > 0 && done.has(s.cid) && !isCur;
 
-            if (s.type === 'rapid') {
-        let isCommonLine = false;
-        if (st.progress > 0) {
-          let searchLen = 0;
-          for (let i = segs.length - 1; i >= 0; i--) {
-            const s2 = segs[i];
-            searchLen += s2.len;
-            if (searchLen > 5) break;
-            const kind2 = s2.type === 'rapid' ? 'rapid' : s2.leadIn ? 'lead-in' : s2.torch ? 'cut' : 'idle';
-            if (kind2 === 'cut') { isCommonLine = true; break; }
-            // Если встретили холостой ход, но он был недавно — не прерываем поиск
-            if (kind2 === 'rapid' && searchLen > 2) break;
-          }
-        }
-        
-        if (isCommonLine) {
+      if (s.type === 'rapid') {
+        if (isCommonSeg[i]) {
           ctx.strokeStyle = palette.commonLine;
           ctx.lineWidth = 2;
           ctx.setLineDash([4, 4]);
@@ -562,7 +665,30 @@ export function getPlayerTemplate(dataJson) {
           ctx.lineWidth = 1.5;
           ctx.setLineDash([5, 5]);
         }
+      } else if (s.leadIn) {
+        ctx.strokeStyle = isDoneC ? palette.cutDone : (isSlowPierce[i] ? palette.slowPierce : palette.leadIn);
+        ctx.lineWidth = isCur ? 3 : 2;
+        ctx.setLineDash([]);
+      } else if (s.torch) {
+        if (isCur) { ctx.strokeStyle = palette.cutCurrent; ctx.lineWidth = 3; }
+        else if (isDoneC) { ctx.strokeStyle = palette.cutDone; ctx.lineWidth = 2; }
+        else { 
+          ctx.strokeStyle = isCommonSeg[i] ? palette.commonLine : palette.cutFuture; 
+          ctx.lineWidth = isCommonSeg[i] ? 2 : 1.5;
+        }
+        ctx.setLineDash(isCommonSeg[i] && !isCur ? [4, 4] : []);
+      } else {
+        ctx.strokeStyle = palette.rapid;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
       }
+
+      ctx.beginPath();
+      ctx.moveTo(pax, pay); ctx.lineTo(pbx, pby);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      curLen += s.len;
+    }
 
     if (currentCid > 0) {
       const bb = contourBBox.get(currentCid);
@@ -613,6 +739,21 @@ export function getPlayerTemplate(dataJson) {
         ctx.stroke();
       }
 
+      if (showCommonBadge) {
+        ctx.fillStyle = '#00ccff';
+        ctx.font = 'bold 16px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.shadowColor = '#00ccff';
+        ctx.shadowBlur = 12;
+        ctx.fillText('✂ ЕДИНЫЙ РЕЗ', px + 20, py - 20);
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#00ccff';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(px, py, 14, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
       hudX.textContent = pos[0].toFixed(1);
       hudY.textContent = pos[1].toFixed(1);
     } else {
@@ -624,6 +765,9 @@ export function getPlayerTemplate(dataJson) {
       hudSpeed.textContent = 'F' + Math.round(st.lastSlowFeed);
       hudSpeed.className = 'sim-hud-speed slow';
       hudState.textContent = '⚡ Медленный врез';
+    } else if (showCommonBadge) {
+      hudSpeed.classList.add('rapid');
+      hudState.textContent = '✂ Единый рез';
     } else if (curKind === 'rapid') {
       hudSpeed.classList.add('rapid');
       hudState.textContent = '⏩ Холостой ход';
@@ -641,6 +785,8 @@ export function getPlayerTemplate(dataJson) {
     
     if (st.slowPierceUntil && performance.now() < st.slowPierceUntil) {
       statusEl.textContent = '⚡ Медленный врез (был F' + Math.round(st.lastSlowFeed) + ')';
+    } else if (showCommonBadge) {
+      statusEl.textContent = '✂ Единый рез';
     } else if (curKind === 'rapid') {
       statusEl.textContent = '⏩ Холостой ход';
     } else if (curKind === 'lead-in') {
@@ -751,6 +897,7 @@ export function getPlayerTemplate(dataJson) {
     st.progress = 0; 
     st.slowPierceUntil = 0;
     st.lastSlowFeed = 0;
+    st.commonLineUntil = 0;
     draw(); 
   });
   

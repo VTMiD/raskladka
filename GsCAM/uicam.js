@@ -171,41 +171,38 @@ function injectStyles() {
 }
 
 function suggestGcodeBase(sheetIdx, thickness) {
-  let projectName = '';
+  // 1. Номер задания (Rs) — берём из активного задания
+  let rsNum = '01';
+  if (state.jobs && state.jobs.length) {
+    const activeJob = state.jobs.find(j => j.id === state.activeJobId);
+    if (activeJob && activeJob.name) {
+      const match = activeJob.name.match(/\d+/);
+      if (match) rsNum = match[0];
+    }
+  }
+
+  // 2. Номер проекта (PR) — берём из имени текущего файла проекта
+  let prNum = '01';
   try {
-    projectName = getCurrentProjectName() || '';
-    if (!projectName) projectName = buildDefaultFileName();
+    const projName = getCurrentProjectName() || '';
+    if (projName) {
+      const m = projName.match(/^PR(\d+)/i);
+      if (m) prNum = String(m[1]).padStart(2, '0');
+    }
   } catch (_) {}
 
-  const m = String(projectName || '').match(/^PR(\d+)(?:D\d+Sm\d+L\d+(?:T[\d.]+)?)?(?:Dt(\d+))?/i);
+  // 3. Габариты и толщина (L)
+  const params = readParams();
+  const sheetDim = `L${Math.round(params.sheetW)}x${Math.round(params.sheetH)}x${params.thickness}`;
 
-  let projectNum = '01';
-  let partsCount = '';
-
-  if (m) {
-    projectNum = String(m[1] || '01').padStart(2, '0');
-    if (m[2]) partsCount = String(m[2]);
+  // 4. Количество деталей (Dt) — на конкретном листе
+  let dtCount = 0;
+  if (state.sheets && state.sheets[sheetIdx]) {
+    dtCount = state.sheets[sheetIdx].placed.length;
   }
+  const dtStr = `Dt${dtCount}`;
 
-  if (!partsCount) {
-    try {
-      let total = 0;
-      for (const sh of state.sheets) total += (sh.placed || []).length;
-      partsCount = String(total);
-    } catch (_) {}
-  }
-
-  let base = `PR${projectNum}L${sheetIdx + 1}`;
-
-  if (thickness && isFinite(thickness)) {
-    const t = Math.round(thickness * 10) / 10;
-    base += `T${t}`;
-  }
-  if (partsCount) {
-    base += `Dt${partsCount}`;
-  }
-
-  return base;
+  return `Rs${rsNum} PR${prNum} ${sheetDim} ${dtStr}`;
 }
 
 function askGcodeOptions() {

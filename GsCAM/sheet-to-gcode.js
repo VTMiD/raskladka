@@ -16,24 +16,12 @@ function validateInputs(sheet, params, post) {
 }
 
 /**
- * Ищет общие ребра между деталями и краем листа для «Общей линии реза».
- * Сравнивает ребра без учета направления (сортирует точки).
+ * Ищет общие ребра между деталями и рамкой листа.
  */
-function findCommonEdges(allContours, sheetW, sheetH, edge) {
+function findCommonEdges(allContours) {
   const edgeMap = new Map();
   const commonEdges = new Set();
-  const TOL = 1.0; // Увеличенный допуск
-
-  // Добавляем контур листа как ещё один "контур" для поиска общих линий
-  if (sheetW > 0 && sheetH > 0) {
-    const sheetRing = [
-      [edge, edge],
-      [edge + sheetW, edge],
-      [edge + sheetW, edge + sheetH],
-      [edge, edge + sheetH]
-    ];
-    allContours.push({ ring: sheetRing });
-  }
+  const TOL = 1.0;
 
   for (let ci = 0; ci < allContours.length; ci++) {
     const ring = allContours[ci].ring;
@@ -155,11 +143,24 @@ export function sheetToGcode(sheet, params, post, ctx, options = {}) {
         for (const c of part.holes) allContours.push(c);
         for (const c of part.outers) allContours.push(c);
       }
-      const commonKeys = findCommonEdges(allContours, params.sheetW - 2*params.edge, params.sheetH - 2*params.edge, params.edge);
+      // Добавляем рамку листа как ещё один контур
+      const sheetW = params.sheetW - 2 * params.edge;
+      const sheetH = params.sheetH - 2 * params.edge;
+      if (sheetW > 0 && sheetH > 0) {
+        allContours.push({
+          ring: [
+            [params.edge, params.edge],
+            [params.edge + sheetW, params.edge],
+            [params.edge + sheetW, params.edge + sheetH],
+            [params.edge, params.edge + sheetH]
+          ]
+        });
+      }
+      const commonKeys = findCommonEdges(allContours);
       
       emitOpts.commonEdgesList = [...commonKeys].map(k => {
           const [ci, vi] = k.split('_').map(Number);
-          if (ci >= allContours.length) return null; // это край листа, пропускаем
+          if (ci >= allContours.length) return null;
           const ring = allContours[ci].ring;
           const p1 = ring[vi];
           const p2 = ring[(vi + 1) % ring.length];
